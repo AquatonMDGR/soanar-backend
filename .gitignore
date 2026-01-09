@@ -31,4 +31,25 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Environment Variables ###
 .env
+.env.*
+!.env.example
+
+### Sensitive Files ###
+*.pem
+*.key
+*.p12
+*.jks
+application-secrets.properties
+secrets.yml
+
+### Database ###
+*.db
+*.sqlite
+*.sqlite3
+
+### Logs ###
+*.log
+logs/
