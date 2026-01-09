@@ -1,10 +1,8 @@
 package com.soanar.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "distribution_groups")
@@ -14,24 +12,21 @@ public class DistributionGroup {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String name; // e.g., "Freshmen", "CS Majors"
+    @Column(nullable = false, unique = true)
+    private String name;
+
+    @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<DistributionGroupMember> members = new HashSet<>();
 
     public DistributionGroup() {}
 
-    public DistributionGroup(String name) {
-        this.name = name;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public Long getId() {
-        return id;
-    }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
+    public Set<DistributionGroupMember> getMembers() { return members; }
+    public void setMembers(Set<DistributionGroupMember> members) { this.members = members; }
 }
 
