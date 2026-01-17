@@ -76,26 +76,27 @@ public class AnnouncementService {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         a.setStatus("PUBLISHED");
         a.setPublishedAt(Instant.now());
-        Announcement saved = announcementRepository.save(a);
-        
-        // Notify Student Organization of approval
-        notificationService.notifyApprovalResult(saved, true);
-        
-        // Notify all students that new announcement is published
-        notificationService.notifyStudentsOfPublishedAnnouncement(saved);
-        
-        return saved;
+        return announcementRepository.save(a);
     }
 
     @Transactional
     public Announcement reject(Long id) {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         a.setStatus("REJECTED");
-        Announcement saved = announcementRepository.save(a);
-        
-        // Notify Student Organization of rejection
-        notificationService.notifyApprovalResult(saved, false);
-        
-        return saved;
+        return announcementRepository.save(a);
+    }
+    
+    @Transactional
+    public void notifyAfterApproval(Long id, boolean approved) {
+        Announcement a = announcementRepository.findById(id).orElseThrow();
+        try {
+            if (a.getPostedBy() != null) {
+                notificationService.notifyApprovalResult(a, approved);
+                notificationService.notifyStudentsOfPublishedAnnouncement(a);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to send notifications for " + (approved ? "approval" : "rejection") + ": " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

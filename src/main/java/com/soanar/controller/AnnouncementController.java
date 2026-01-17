@@ -63,15 +63,28 @@ public class AnnouncementController {
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long id) {
         
-        String token = authHeader.replace("Bearer ", "");
-        String role = jwtUtil.extractRole(token);
-        
-        if (!"OSAS".equals(role)) {
-            return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            String role = jwtUtil.extractRole(token);
+            
+            if (!"OSAS".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));
+            }
+            
+            Announcement a = announcementService.approve(id);
+            
+            // Send notifications in separate transaction
+            try {
+                announcementService.notifyAfterApproval(id, true);
+            } catch (Exception e) {
+                System.err.println("Notification failed but approval succeeded: " + e.getMessage());
+            }
+            
+            return ResponseEntity.ok(a);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage(), "type", e.getClass().getName()));
         }
-        
-        Announcement a = announcementService.approve(id);
-        return ResponseEntity.ok(a);
     }
 
     @PostMapping("/{id}/reject")
@@ -79,14 +92,27 @@ public class AnnouncementController {
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long id) {
         
-        String token = authHeader.replace("Bearer ", "");
-        String role = jwtUtil.extractRole(token);
-        
-        if (!"OSAS".equals(role)) {
-            return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can reject"));
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            String role = jwtUtil.extractRole(token);
+            
+            if (!"OSAS".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can reject"));
+            }
+            
+            Announcement a = announcementService.reject(id);
+            
+            // Send notifications in separate transaction
+            try {
+                announcementService.notifyAfterApproval(id, false);
+            } catch (Exception e) {
+                System.err.println("Notification failed but rejection succeeded: " + e.getMessage());
+            }
+            
+            return ResponseEntity.ok(a);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage(), "type", e.getClass().getName()));
         }
-        
-        Announcement a = announcementService.reject(id);
-        return ResponseEntity.ok(a);
     }
 }
