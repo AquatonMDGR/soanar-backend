@@ -91,11 +91,21 @@ public class NotificationService {
     }
 
     /**
-     * Notify Student Organization when their announcement is approved
+     * Notify Student Organization when their announcement is approved/rejected
      */
     @Transactional
     public void notifyApprovalResult(Announcement announcement, boolean approved) {
+        if (announcement.getPostedBy() == null) {
+            System.err.println("Cannot notify approval result: postedBy is null for announcement " + announcement.getId());
+            return;
+        }
+        
         String recipientEmail = announcement.getPostedBy().getSchoolEmail();
+        if (recipientEmail == null || recipientEmail.isEmpty()) {
+            System.err.println("Cannot notify approval result: recipientEmail is null or empty for user " + announcement.getPostedBy().getId());
+            return;
+        }
+        
         String type = approved ? "approval" : "rejection";
         String title = approved ? "Announcement Approved ✓" : "Announcement Rejected ✗";
         String message = approved 
