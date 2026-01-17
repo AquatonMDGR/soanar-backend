@@ -43,14 +43,19 @@ public class AnnouncementController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Announcement request) {
         
-        String token = authHeader.replace("Bearer ", "");
-        String email = jwtUtil.extractEmail(token);
-        
-        User poster = userService.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        Announcement created = announcementService.create(request, poster);
-        return ResponseEntity.ok(created);
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            String email = jwtUtil.extractEmail(token);
+            
+            User poster = userService.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + email));
+            
+            Announcement created = announcementService.create(request, poster);
+            return ResponseEntity.ok(created);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/{id}/approve")

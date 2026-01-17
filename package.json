@@ -1,0 +1,16 @@
+{
+  "name": "soanar-backend",
+  "version": "1.0.0",
+  "description": "Supabase CLI tools for SOANAR backend",
+  "scripts": {
+    "supabase:status": "supabase status",
+    "supabase:projects": "supabase projects list",
+    "supabase:db-pull": "supabase db pull",
+    "supabase:db-push": "supabase db push",
+    "supabase:migrations-list": "supabase migrations list",
+    "supabase:help": "supabase --help"
+  },
+  "devDependencies": {
+    "supabase": "^2.72.7"
+  }
+}

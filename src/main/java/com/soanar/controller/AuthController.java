@@ -65,7 +65,12 @@ public class AuthController {
                 "role", role,
                 "name", name
             ));
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid Google token: " + e.getMessage()));
+        } catch (org.springframework.web.client.RestClientException e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to verify token with Google: " + e.getMessage()));
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", "Login failed: " + e.getMessage()));
         }
     }

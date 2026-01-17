@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,7 +23,14 @@ public class JwtUtil {
     private Long expiration;
 
     private Key getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes());
+        // Handle base64-encoded secrets
+        try {
+            byte[] decodedKey = Base64.getDecoder().decode(secret);
+            return Keys.hmacShaKeyFor(decodedKey);
+        } catch (IllegalArgumentException e) {
+            // If not base64, use as-is
+            return Keys.hmacShaKeyFor(secret.getBytes());
+        }
     }
 
     public String generateToken(String email, String role) {

@@ -36,6 +36,7 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement create(Announcement a, User poster) {
+        // Set the poster - Spring Data JPA will manage the relationship
         a.setPostedBy(poster);
         String posterRole = poster.getRole();
         
@@ -47,7 +48,23 @@ public class AnnouncementService {
         }
         
         a.setCreatedAt(Instant.now());
-        return announcementRepository.save(a);
+        
+        try {
+            Announcement saved = announcementRepository.save(a);
+            
+            // Trigger notifications based on role
+            if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
+                // OSAS or Academic can post directly -> notify all students
+                notificationService.notifyStudentsOfPublishedAnnouncement(saved);
+            } else if ("Student Organization".equals(posterRole)) {
+                // Student Organization -> notify OSAS for approval
+                notificationService.notifyOSASOfNewAnnouncement(saved);
+            }
+            
+            return saved;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create announcement: " + e.getMessage(), e);
+        }
     }
 
     public Optional<Announcement> findById(Long id) {
@@ -59,13 +76,26 @@ public class AnnouncementService {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         a.setStatus("PUBLISHED");
         a.setPublishedAt(Instant.now());
-        return announcementRepository.save(a);
+        Announcement saved = announcementRepository.save(a);
+        
+        // Notify Student Organization of approval
+        notificationService.notifyApprovalResult(saved, true);
+        
+        // Notify all students that new announcement is published
+        notificationService.notifyStudentsOfPublishedAnnouncement(saved);
+        
+        return saved;
     }
 
     @Transactional
     public Announcement reject(Long id) {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         a.setStatus("REJECTED");
-        return announcementRepository.save(a);
+        Announcement saved = announcementRepository.save(a);
+        
+        // Notify Student Organization of rejection
+        notificationService.notifyApprovalResult(saved, false);
+        
+        return saved;
     }
 }
