@@ -1,6 +1,8 @@
 package com.soanar.config;
 
-import com.soanar.service.UserService;
+import java.util.Collections;
+import java.util.Map;
+
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
@@ -9,8 +11,7 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.Map;
+import com.soanar.service.UserService;
 
 @Service
 public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
@@ -35,9 +36,9 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
             throw new OAuth2AuthenticationException("Email not found in OAuth2 response");
         }
 
-        // Validate email domain - only allow @iacademy.edu.ph
+        // Email domain validation - only @iacademy.edu.ph emails allowed
         if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
-            throw new OAuth2AuthenticationException("Only @iacademy.edu.ph email addresses are allowed");
+            throw new OAuth2AuthenticationException("Only @iacademy.edu.ph emails are allowed");
         }
 
         // Basic role resolution: default to Student; admin roles assigned via Admin API
