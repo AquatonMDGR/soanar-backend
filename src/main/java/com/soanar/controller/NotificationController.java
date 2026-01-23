@@ -35,4 +35,12 @@ public class NotificationController {
         notificationService.markAsRead(notificationId);
         return ResponseEntity.ok(Map.of("message", "Notification marked as read"));
     }
+
+    @PostMapping("/mark-all-read")
+    public ResponseEntity<?> markAllAsRead(@RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.replace("Bearer ", "");
+        String email = jwtUtil.extractEmail(token);
+        notificationService.markAllAsReadForUser(email);
+        return ResponseEntity.ok(Map.of("message", "All notifications marked as read"));
+    }
 }
