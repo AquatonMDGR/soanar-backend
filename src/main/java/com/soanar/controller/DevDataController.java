@@ -4,6 +4,7 @@ import com.soanar.model.Announcement;
 import com.soanar.model.User;
 import com.soanar.repository.AnnouncementRepository;
 import com.soanar.repository.UserRepository;
+import com.soanar.service.NotificationService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,10 +20,14 @@ public class DevDataController {
 
     private final UserRepository userRepository;
     private final AnnouncementRepository announcementRepository;
+    private final NotificationService notificationService;
 
-    public DevDataController(UserRepository userRepository, AnnouncementRepository announcementRepository) {
+    public DevDataController(UserRepository userRepository,
+                             AnnouncementRepository announcementRepository,
+                             NotificationService notificationService) {
         this.userRepository = userRepository;
         this.announcementRepository = announcementRepository;
+        this.notificationService = notificationService;
     }
 
     @PostMapping("/users")
@@ -79,6 +84,33 @@ public class DevDataController {
 
         resp.put("id", saved.getId());
         resp.put("message", "announcement created");
+        return resp;
+    }
+
+    /**
+     * Backfill notifications for already-approved/published announcements (e.g., after CSV import).
+     * Dev-only: guarded by dev.mode=true
+     */
+    @PostMapping("/backfill-notifications")
+    public Map<String, Object> backfillNotifications() {
+        var statuses = java.util.Arrays.asList("PUBLISHED", "APPROVED");
+        var announcements = announcementRepository.findByStatusIn(statuses);
+
+        int created = 0;
+        for (Announcement a : announcements) {
+            if (a.getPublishedAt() != null) {
+                try {
+                    notificationService.notifyStudentsOfPublishedAnnouncement(a);
+                    created++;
+                } catch (Exception e) {
+                    // continue with next
+                }
+            }
+        }
+
+        Map<String, Object> resp = new java.util.HashMap<>();
+        resp.put("processed", announcements.size());
+        resp.put("created", created);
         return resp;
     }
 

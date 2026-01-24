@@ -27,7 +27,7 @@ public class AnnouncementService {
     }
 
     public List<Announcement> getPublished() {
-        return announcementRepository.findByStatus("PUBLISHED");
+        return announcementRepository.findByStatusIn(java.util.Arrays.asList("PUBLISHED", "APPROVED"));
     }
 
     public List<Announcement> getPending() {
