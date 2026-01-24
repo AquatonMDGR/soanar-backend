@@ -1,15 +1,20 @@
 package com.soanar.controller;
 
+import com.soanar.dto.AnnouncementRequest;
 import com.soanar.model.Announcement;
+import com.soanar.model.DistributionGroup;
 import com.soanar.model.User;
+import com.soanar.repository.DistributionGroupRepository;
 import com.soanar.service.AnnouncementService;
 import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/announcements")
@@ -19,13 +24,16 @@ public class AnnouncementController {
     private final AnnouncementService announcementService;
     private final UserService userService;
     private final JwtUtil jwtUtil;
+    private final DistributionGroupRepository distributionGroupRepository;
 
     public AnnouncementController(AnnouncementService announcementService, 
                                    UserService userService,
-                                   JwtUtil jwtUtil) {
+                                   JwtUtil jwtUtil,
+                                   DistributionGroupRepository distributionGroupRepository) {
         this.announcementService = announcementService;
         this.userService = userService;
         this.jwtUtil = jwtUtil;
+        this.distributionGroupRepository = distributionGroupRepository;
     }
 
     @GetMapping
@@ -41,7 +49,7 @@ public class AnnouncementController {
     @PostMapping
     public ResponseEntity<?> create(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody Announcement request) {
+            @RequestBody AnnouncementRequest request) {
         
         try {
             String token = authHeader.replace("Bearer ", "");
@@ -50,7 +58,22 @@ public class AnnouncementController {
             User poster = userService.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
             
-            Announcement created = announcementService.create(request, poster);
+            // Create announcement entity from request
+            Announcement announcement = new Announcement();
+            announcement.setTitle(request.getTitle());
+            announcement.setDescription(request.getDescription());
+            announcement.setImageUrl(request.getImageUrl());
+            
+            // Set distribution groups if provided
+            if (request.getDistributionGroupIds() != null && !request.getDistributionGroupIds().isEmpty()) {
+                Set<DistributionGroup> groups = new HashSet<>();
+                for (Long groupId : request.getDistributionGroupIds()) {
+                    distributionGroupRepository.findById(groupId).ifPresent(groups::add);
+                }
+                announcement.setDistributionGroups(groups);
+            }
+            
+            Announcement created = announcementService.create(announcement, poster);
             return ResponseEntity.ok(created);
         } catch (Exception e) {
             e.printStackTrace();

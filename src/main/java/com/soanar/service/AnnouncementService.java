@@ -52,12 +52,12 @@ public class AnnouncementService {
         try {
             Announcement saved = announcementRepository.save(a);
             
-            // Trigger notifications based on role
+            // Send emails and notifications based on poster role
             if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
-                // OSAS or Academic can post directly -> notify all students
+                // OSAS or Academic can post directly -> email ALL students
                 notificationService.notifyStudentsOfPublishedAnnouncement(saved);
             } else if ("Student Organization".equals(posterRole)) {
-                // Student Organization -> notify OSAS for approval
+                // Student Organization -> notify OSAS for approval (no emails sent yet)
                 notificationService.notifyOSASOfNewAnnouncement(saved);
             }
             
@@ -91,8 +91,20 @@ public class AnnouncementService {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         try {
             if (a.getPostedBy() != null) {
+                // Notify the poster about approval/rejection
                 notificationService.notifyApprovalResult(a, approved);
-                notificationService.notifyStudentsOfPublishedAnnouncement(a);
+                
+                // If approved, send emails to distribution group members (Student Org announcements)
+                if (approved) {
+                    String posterRole = a.getPostedBy().getRole();
+                    if ("Student Organization".equals(posterRole)) {
+                        // Student Org announcement approved -> email distribution group members
+                        notificationService.notifyDistributionGroupMembers(a);
+                    } else {
+                        // For other roles (shouldn't happen), email all students
+                        notificationService.notifyStudentsOfPublishedAnnouncement(a);
+                    }
+                }
             }
         } catch (Exception e) {
             System.err.println("Failed to send notifications for " + (approved ? "approval" : "rejection") + ": " + e.getMessage());

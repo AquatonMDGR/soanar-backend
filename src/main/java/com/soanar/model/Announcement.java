@@ -2,6 +2,8 @@ package com.soanar.model;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "announcements")
@@ -32,6 +34,14 @@ public class Announcement {
 
     @Column(name = "image_url")
     private String imageUrl;
+    
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "announcement_distribution_groups",
+        joinColumns = @JoinColumn(name = "announcement_id"),
+        inverseJoinColumns = @JoinColumn(name = "group_id")
+    )
+    private Set<DistributionGroup> distributionGroups = new HashSet<>();
 
     public Announcement() {}
 
@@ -59,5 +69,8 @@ public class Announcement {
 
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    
+    public Set<DistributionGroup> getDistributionGroups() { return distributionGroups; }
+    public void setDistributionGroups(Set<DistributionGroup> distributionGroups) { this.distributionGroups = distributionGroups; }
 }
 
