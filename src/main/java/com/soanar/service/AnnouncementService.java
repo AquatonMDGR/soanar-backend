@@ -52,6 +52,9 @@ public class AnnouncementService {
         try {
             Announcement saved = announcementRepository.save(a);
             
+            // Notify event creator about their newly created event
+            notificationService.notifyEventCreator(saved);
+            
             // Trigger notifications based on role
             if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
                 // OSAS or Academic can post directly -> notify all students
