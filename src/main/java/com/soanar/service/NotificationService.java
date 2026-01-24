@@ -62,7 +62,7 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAllAsReadForUser(String email) {
+    public void markAllAsRead(String email) {
         notificationRepository.markAllAsReadForUser(email, Instant.now());
     }
 
@@ -206,5 +206,37 @@ public class NotificationService {
             : "Your announcement \"" + announcement.getTitle() + "\" has been rejected by OSAS.";
         
         createNotification(announcement, recipientEmail, type, title, message);
+    }
+
+    /**
+     * Notify event creator when their event has been successfully created
+     * Provides feedback on whether event is published or pending approval
+     */
+    @Transactional
+    public void notifyEventCreator(Announcement announcement) {
+        if (announcement.getPostedBy() == null) {
+            System.err.println("Cannot notify event creator: postedBy is null for announcement " + announcement.getId());
+            return;
+        }
+        
+        String recipientEmail = announcement.getPostedBy().getSchoolEmail();
+        if (recipientEmail == null || recipientEmail.isEmpty()) {
+            System.err.println("Cannot notify event creator: recipientEmail is null or empty for user " + announcement.getPostedBy().getId());
+            return;
+        }
+        
+        String status = announcement.getStatus();
+        String title = "Event Created Successfully ✓";
+        String message;
+        
+        if ("PUBLISHED".equals(status)) {
+            message = "Your event \"" + announcement.getTitle() + "\" has been published and is now visible to all students.";
+        } else if ("PENDING".equals(status)) {
+            message = "Your event \"" + announcement.getTitle() + "\" has been submitted for approval. OSAS will review it shortly.";
+        } else {
+            message = "Your event \"" + announcement.getTitle() + "\" has been created with status: " + status;
+        }
+        
+        createNotification(announcement, recipientEmail, "event-created", title, message);
     }
 }

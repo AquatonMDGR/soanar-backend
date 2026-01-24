@@ -40,7 +40,7 @@ public class NotificationController {
     public ResponseEntity<?> markAllAsRead(@RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         String email = jwtUtil.extractEmail(token);
-        notificationService.markAllAsReadForUser(email);
+        notificationService.markAllAsRead(email);
         return ResponseEntity.ok(Map.of("message", "All notifications marked as read"));
     }
 }
