@@ -52,16 +52,18 @@ public class AnnouncementService {
         try {
             Announcement saved = announcementRepository.save(a);
             
-            // Notify event creator about their newly created event
-            notificationService.notifyEventCreator(saved);
-            
-            // Trigger notifications based on role
-            if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
-                // OSAS or Academic can post directly -> email ALL students
-                notificationService.notifyStudentsOfPublishedAnnouncement(saved);
-            } else if ("Student Organization".equals(posterRole)) {
-                // Student Organization -> notify OSAS for approval (no emails sent yet)
-                notificationService.notifyOSASOfNewAnnouncement(saved);
+            // Trigger notifications based on role (in separate transactions to avoid abort)
+            try {
+                if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
+                    // OSAS or Academic can post directly -> email ALL students
+                    notificationService.notifyStudentsOfPublishedAnnouncement(saved);
+                } else if ("Student Organization".equals(posterRole)) {
+                    // Student Organization -> notify OSAS for approval (no emails sent yet)
+                    notificationService.notifyOSASOfNewAnnouncement(saved);
+                }
+            } catch (Exception notifyError) {
+                System.err.println("Warning: Failed to send notifications for announcement " + saved.getId() + ": " + notifyError.getMessage());
+                // Don't fail announcement creation if notifications fail
             }
             
             return saved;
