@@ -50,6 +50,11 @@ public class NotificationService {
     }
 
     @Transactional
+    public void markAllAsRead(String email) {
+        notificationRepository.markAllAsReadForUser(email, Instant.now());
+    }
+
+    @Transactional
     public void notifyDistributionGroup(Announcement announcement, List<String> emails) {
         for (String email : emails) {
             createNotification(announcement, email);
