@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface AnnouncementRepository extends JpaRepository<Announcement, Long> {
     List<Announcement> findByStatus(String status);
+    List<Announcement> findByStatusIn(List<String> statuses);
 }
