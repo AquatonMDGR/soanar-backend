@@ -10,8 +10,12 @@ import java.util.List;
 
 @Repository
 public interface AnnouncementRepository extends JpaRepository<Announcement, Long> {
-    List<Announcement> findByStatus(String status);
+    @Query("SELECT a FROM Announcement a WHERE a.status = :status ORDER BY a.createdAt DESC")
+    List<Announcement> findByStatus(@Param("status") String status);
     
-    @Query("SELECT a FROM Announcement a WHERE a.status IN :statuses")
+    @Query("SELECT a FROM Announcement a WHERE a.status IN :statuses ORDER BY a.createdAt DESC")
     List<Announcement> findByStatusIn(@Param("statuses") List<String> statuses);
+    
+    @Query("SELECT a FROM Announcement a ORDER BY a.createdAt DESC")
+    List<Announcement> findAll();
 }

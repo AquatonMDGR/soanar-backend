@@ -52,16 +52,18 @@ public class AnnouncementService {
         try {
             Announcement saved = announcementRepository.save(a);
             
-            // Notify event creator about their newly created event
-            notificationService.notifyEventCreator(saved);
-            
-            // Trigger notifications based on role
-            if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
-                // OSAS or Academic can post directly -> notify all students
-                notificationService.notifyStudentsOfPublishedAnnouncement(saved);
-            } else if ("Student Organization".equals(posterRole)) {
-                // Student Organization -> notify OSAS for approval
-                notificationService.notifyOSASOfNewAnnouncement(saved);
+            // Trigger notifications based on role (in separate transactions to avoid abort)
+            try {
+                if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
+                    // OSAS or Academic can post directly -> email ALL students
+                    notificationService.notifyStudentsOfPublishedAnnouncement(saved);
+                } else if ("Student Organization".equals(posterRole)) {
+                    // Student Organization -> notify OSAS for approval (no emails sent yet)
+                    notificationService.notifyOSASOfNewAnnouncement(saved);
+                }
+            } catch (Exception notifyError) {
+                System.err.println("Warning: Failed to send notifications for announcement " + saved.getId() + ": " + notifyError.getMessage());
+                // Don't fail announcement creation if notifications fail
             }
             
             return saved;
@@ -94,8 +96,20 @@ public class AnnouncementService {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         try {
             if (a.getPostedBy() != null) {
+                // Notify the poster about approval/rejection
                 notificationService.notifyApprovalResult(a, approved);
-                notificationService.notifyStudentsOfPublishedAnnouncement(a);
+                
+                // If approved, send emails to distribution group members (Student Org announcements)
+                if (approved) {
+                    String posterRole = a.getPostedBy().getRole();
+                    if ("Student Organization".equals(posterRole)) {
+                        // Student Org announcement approved -> email distribution group members
+                        notificationService.notifyDistributionGroupMembers(a);
+                    } else {
+                        // For other roles (shouldn't happen), email all students
+                        notificationService.notifyStudentsOfPublishedAnnouncement(a);
+                    }
+                }
             }
         } catch (Exception e) {
             System.err.println("Failed to send notifications for " + (approved ? "approval" : "rejection") + ": " + e.getMessage());
