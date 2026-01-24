@@ -1,12 +1,19 @@
 package com.soanar.controller;
 
-import com.soanar.service.UserService;
-import com.soanar.util.JwtUtil;
+import java.util.Map;
+
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Map;
+import com.soanar.service.UserService;
+import com.soanar.util.JwtUtil;
 
 @RestController
 @RequestMapping("/api")
@@ -42,7 +49,7 @@ public class AuthController {
             String email = (String) googleResponse.get("email");
             String name = (String) googleResponse.getOrDefault("name", "");
 
-            // Validate email domain
+            // Email domain validation - only @iacademy.edu.ph emails allowed
             if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only @iacademy.edu.ph emails are allowed"));
             }

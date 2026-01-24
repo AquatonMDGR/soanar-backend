@@ -89,7 +89,7 @@ private Key getSigningKey() {
 ### Test Case 2: Non-iACADEMY Email
 1. Use Google account with different domain (e.g., @gmail.com)
 2. Click "Sign in with Google"
-3. Should see error: "Only @iacademy.edu.ph emails are allowed"
+3. Should see error: "Use your iACADEMY Account"
 
 ### Test Case 3: Network Error
 1. Start frontend but stop backend
