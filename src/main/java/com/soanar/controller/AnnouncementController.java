@@ -30,7 +30,7 @@ public class AnnouncementController {
 
     @GetMapping
     public List<Announcement> list(@RequestParam(required = false) String status) {
-        if ("PUBLISHED".equals(status)) {
+        if ("PUBLISHED".equals(status) || "APPROVED".equals(status)) {
             return announcementService.getPublished();
         } else if ("PENDING".equals(status)) {
             return announcementService.getPending();
