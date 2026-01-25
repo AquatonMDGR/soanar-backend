@@ -2,6 +2,7 @@ package com.soanar.model;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -34,6 +35,12 @@ public class Announcement {
 
     @Column(name = "image_url")
     private String imageUrl;
+    
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "end_date")
+    private LocalDate endDate;
     
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
@@ -69,6 +76,12 @@ public class Announcement {
 
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
     
     public Set<DistributionGroup> getDistributionGroups() { return distributionGroups; }
     public void setDistributionGroups(Set<DistributionGroup> distributionGroups) { this.distributionGroups = distributionGroups; }
