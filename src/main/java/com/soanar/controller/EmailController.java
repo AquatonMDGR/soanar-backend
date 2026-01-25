@@ -1,7 +1,6 @@
 package com.soanar.controller;
 
 import com.soanar.service.EmailService;
-import com.soanar.service.DistributionGroupService;
 import com.soanar.util.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,14 +14,11 @@ import java.util.Map;
 public class EmailController {
 
     private final EmailService emailService;
-    private final DistributionGroupService distributionGroupService;
     private final JwtUtil jwtUtil;
 
     public EmailController(EmailService emailService, 
-                           DistributionGroupService distributionGroupService,
                            JwtUtil jwtUtil) {
         this.emailService = emailService;
-        this.distributionGroupService = distributionGroupService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -38,6 +34,7 @@ public class EmailController {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
+        @SuppressWarnings("unchecked")
         List<String> recipients = (List<String>) body.get("recipients");
         String subject = (String) body.get("subject");
         String emailBody = (String) body.get("body");
@@ -57,7 +54,8 @@ public class EmailController {
         if (!"OSAS".equals(role) && !"Academic".equals(role)) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
-
+@SuppressWarnings("unchecked")
+        
         List<String> recipients = (List<String>) body.get("recipients");
         String subject = (String) body.get("subject");
         String emailBody = (String) body.get("body");
