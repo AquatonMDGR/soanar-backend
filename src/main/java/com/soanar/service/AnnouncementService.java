@@ -3,18 +3,32 @@ package com.soanar.service;
 import com.soanar.model.Announcement;
 import com.soanar.model.User;
 import com.soanar.repository.AnnouncementRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class AnnouncementService {
 
     private final AnnouncementRepository announcementRepository;
     private final NotificationService notificationService;
+    
+    @Value("${supabase.url}")
+    private String supabaseUrl;
+    
+    @Value("${supabase.service-role-key}")
+    private String supabaseKey;
 
     public AnnouncementService(AnnouncementRepository announcementRepository,
                                 NotificationService notificationService) {
@@ -92,6 +106,11 @@ public class AnnouncementService {
     }
     
     @Transactional
+    public void delete(Long id) {
+        announcementRepository.deleteById(id);
+    }
+    
+    @Transactional
     public void notifyAfterApproval(Long id, boolean approved) {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         try {
@@ -114,6 +133,58 @@ public class AnnouncementService {
         } catch (Exception e) {
             System.err.println("Failed to send notifications for " + (approved ? "approval" : "rejection") + ": " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+    
+    public String uploadToSupabase(MultipartFile file, String bucketName, String folderPath) throws IOException {
+        try {
+            // Validate configuration
+            if (supabaseUrl == null || supabaseUrl.equals("your-service-role-key-here") || supabaseUrl.isEmpty()) {
+                throw new IOException("Supabase URL is not configured. Please set SUPABASE_URL in .env file.");
+            }
+            if (supabaseKey == null || supabaseKey.equals("your-service-role-key-here") || supabaseKey.isEmpty()) {
+                throw new IOException("Supabase service role key is not configured. Please set SUPABASE_SERVICE_ROLE_KEY in .env file.");
+            }
+            
+            // Generate unique filename
+            String originalFilename = file.getOriginalFilename();
+            String extension = originalFilename != null && originalFilename.contains(".") 
+                ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
+                : "";
+            String uniqueFilename = UUID.randomUUID().toString() + extension;
+            String fullPath = folderPath + "/" + uniqueFilename;
+            
+            // Build Supabase Storage API URL
+            String uploadUrl = supabaseUrl + "/storage/v1/object/" + bucketName + "/" + fullPath;
+            
+            System.out.println("Uploading to Supabase Storage: " + uploadUrl);
+            
+            // Create HTTP request
+            HttpClient client = HttpClient.newHttpClient();
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(uploadUrl))
+                .header("Authorization", "Bearer " + supabaseKey)
+                .header("Content-Type", file.getContentType())
+                .POST(HttpRequest.BodyPublishers.ofByteArray(file.getBytes()))
+                .build();
+            
+            // Send request
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            System.out.println("Supabase response status: " + response.statusCode());
+            System.out.println("Supabase response body: " + response.body());
+            
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                // Return public URL
+                String publicUrl = supabaseUrl + "/storage/v1/object/public/" + bucketName + "/" + fullPath;
+                System.out.println("Upload successful, public URL: " + publicUrl);
+                return publicUrl;
+            } else {
+                throw new IOException("Supabase upload failed: " + response.statusCode() + " - " + response.body());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Upload interrupted", e);
         }
     }
 }

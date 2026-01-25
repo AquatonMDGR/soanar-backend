@@ -10,6 +10,7 @@ import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashSet;
 import java.util.List;
@@ -49,7 +50,11 @@ public class AnnouncementController {
     @PostMapping
     public ResponseEntity<?> create(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody AnnouncementRequest request) {
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate) {
         
         try {
             String token = authHeader.replace("Bearer ", "");
@@ -58,19 +63,29 @@ public class AnnouncementController {
             User poster = userService.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
             
-            // Create announcement entity from request
+            // Create announcement entity
             Announcement announcement = new Announcement();
-            announcement.setTitle(request.getTitle());
-            announcement.setDescription(request.getDescription());
-            announcement.setImageUrl(request.getImageUrl());
+            announcement.setTitle(title);
+            announcement.setDescription(description);
             
-            // Set distribution groups if provided
-            if (request.getDistributionGroupIds() != null && !request.getDistributionGroupIds().isEmpty()) {
-                Set<DistributionGroup> groups = new HashSet<>();
-                for (Long groupId : request.getDistributionGroupIds()) {
-                    distributionGroupRepository.findById(groupId).ifPresent(groups::add);
+            // Upload file to Supabase storage if provided
+            if (file != null && !file.isEmpty()) {
+                try {
+                    String fileUrl = announcementService.uploadToSupabase(file, "Announcement-Media-Bucket", "Media-Files");
+                    announcement.setImageUrl(fileUrl);
+                } catch (Exception e) {
+                    System.err.println("Warning: File upload failed, continuing without image: " + e.getMessage());
+                    e.printStackTrace();
+                    // Continue without image instead of failing the entire request
                 }
-                announcement.setDistributionGroups(groups);
+            }
+            
+            // Map dates if provided
+            if (startDate != null && !startDate.isBlank()) {
+                announcement.setStartDate(java.time.LocalDate.parse(startDate));
+            }
+            if (endDate != null && !endDate.isBlank()) {
+                announcement.setEndDate(java.time.LocalDate.parse(endDate));
             }
             
             Announcement created = announcementService.create(announcement, poster);
@@ -136,6 +151,33 @@ public class AnnouncementController {
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage(), "type", e.getClass().getName()));
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long id) {
+        
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            String email = jwtUtil.extractEmail(token);
+            String role = jwtUtil.extractRole(token);
+            
+            // Only the poster or OSAS can delete
+            Announcement announcement = announcementService.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Announcement not found"));
+            
+            User poster = announcement.getPostedBy();
+            if (poster == null || (!poster.getSchoolEmail().equals(email) && !"OSAS".equals(role))) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only the poster or OSAS can delete this announcement"));
+            }
+            
+            announcementService.delete(id);
+            return ResponseEntity.ok(Map.of("message", "Announcement deleted successfully"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
 }
