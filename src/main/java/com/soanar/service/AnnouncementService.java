@@ -138,11 +138,13 @@ public class AnnouncementService {
     
     public String uploadToSupabase(MultipartFile file, String bucketName, String folderPath) throws IOException {
         try {
-            // Validate configuration
-            if (supabaseUrl == null || supabaseUrl.equals("your-service-role-key-here") || supabaseUrl.isEmpty()) {
+            // Normalize and validate configuration
+            String resolvedUrl = supabaseUrl != null ? supabaseUrl.trim() : "";
+            String resolvedKey = supabaseKey != null ? supabaseKey.trim() : "";
+            if (resolvedUrl.isEmpty() || "your-service-role-key-here".equals(resolvedUrl)) {
                 throw new IOException("Supabase URL is not configured. Please set SUPABASE_URL in .env file.");
             }
-            if (supabaseKey == null || supabaseKey.equals("your-service-role-key-here") || supabaseKey.isEmpty()) {
+            if (resolvedKey.isEmpty() || "your-service-role-key-here".equals(resolvedKey)) {
                 throw new IOException("Supabase service role key is not configured. Please set SUPABASE_SERVICE_ROLE_KEY in .env file.");
             }
             
@@ -155,16 +157,19 @@ public class AnnouncementService {
             String fullPath = folderPath + "/" + uniqueFilename;
             
             // Build Supabase Storage API URL
-            String uploadUrl = supabaseUrl + "/storage/v1/object/" + bucketName + "/" + fullPath;
+            String uploadUrl = resolvedUrl + "/storage/v1/object/" + bucketName + "/" + fullPath;
             
             System.out.println("Uploading to Supabase Storage: " + uploadUrl);
             
             // Create HTTP request
             HttpClient client = HttpClient.newHttpClient();
+            String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(uploadUrl))
-                .header("Authorization", "Bearer " + supabaseKey)
-                .header("Content-Type", file.getContentType())
+                .header("Authorization", "Bearer " + resolvedKey)
+                .header("apikey", resolvedKey)
+                .header("Content-Type", contentType)
+                .timeout(java.time.Duration.ofSeconds(30))
                 .POST(HttpRequest.BodyPublishers.ofByteArray(file.getBytes()))
                 .build();
             
@@ -176,7 +181,7 @@ public class AnnouncementService {
             
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 // Return public URL
-                String publicUrl = supabaseUrl + "/storage/v1/object/public/" + bucketName + "/" + fullPath;
+                String publicUrl = resolvedUrl + "/storage/v1/object/public/" + bucketName + "/" + fullPath;
                 System.out.println("Upload successful, public URL: " + publicUrl);
                 return publicUrl;
             } else {
