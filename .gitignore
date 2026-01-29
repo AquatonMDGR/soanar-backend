@@ -48,6 +48,39 @@ secrets.yml
 ### Database ###
 *.db
 *.sqlite
+
+### Logs ###
+*.log
+logs/
+spring.log
+
+### OS Files ###
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+
+### Supabase ###
+supabase/.branches
+supabase/.temp
+supabase/config.toml
+
+### Spec Kit (keep templates, exclude analysis with sensitive data) ###
+specs/*-analysis.md
+specs/**/*-analysis.md
+
+### Backup Files ###
+*.bak
+*.swp
+*~
+
+### Package Files ###
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
 *.sqlite3
 
 ### Logs ###
