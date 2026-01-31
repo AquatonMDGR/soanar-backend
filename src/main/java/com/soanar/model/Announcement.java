@@ -1,8 +1,23 @@
 package com.soanar.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Type;
+import io.hypersistence.utils.hibernate.type.json.JsonType;
 import java.time.Instant;
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+import java.time.LocalDate;
+=======
+<<<<<<< Updated upstream
+=======
+import java.time.LocalDate;
+import java.util.ArrayList;
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -35,6 +50,28 @@ public class Announcement {
     @Column(name = "image_url")
     private String imageUrl;
     
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+=======
+    @Column(name = "image_urls", columnDefinition = "jsonb DEFAULT '[]'::jsonb")
+    @Type(JsonType.class)
+    private List<String> imageUrls = new ArrayList<>();
+    
+>>>>>>> Stashed changes
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "end_date")
+    private LocalDate endDate;
+    
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "announcement_distribution_groups",
@@ -70,6 +107,27 @@ public class Announcement {
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+=======
+    public List<String> getImageUrls() { return imageUrls; }
+    public void setImageUrls(List<String> imageUrls) { this.imageUrls = imageUrls; }
+    
+>>>>>>> Stashed changes
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+    
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
     public Set<DistributionGroup> getDistributionGroups() { return distributionGroups; }
     public void setDistributionGroups(Set<DistributionGroup> distributionGroups) { this.distributionGroups = distributionGroups; }
 }

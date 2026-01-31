@@ -49,7 +49,26 @@ public class AnnouncementController {
     @PostMapping
     public ResponseEntity<?> create(
             @RequestHeader("Authorization") String authHeader,
+<<<<<<< Updated upstream
             @RequestBody AnnouncementRequest request) {
+=======
+<<<<<<< Updated upstream
+            @RequestParam(value = "file", required = false) MultipartFile file,
+=======
+<<<<<<< Updated upstream
+            @RequestBody AnnouncementRequest request) {
+=======
+            @RequestParam(value = "files", required = false) MultipartFile[] files,
+>>>>>>> Stashed changes
+            @RequestParam("title") String title,
+            @RequestParam("description") String description,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate) {
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
         
         try {
             String token = authHeader.replace("Bearer ", "");
@@ -64,11 +83,44 @@ public class AnnouncementController {
             announcement.setDescription(request.getDescription());
             announcement.setImageUrl(request.getImageUrl());
             
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+            // Upload file to Supabase storage if provided
+            if (file != null && !file.isEmpty()) {
+                try {
+                    String fileUrl = announcementService.uploadToSupabase(file, "Announcement-Media-Bucket", "Media-Files");
+                    announcement.setImageUrl(fileUrl);
+                } catch (Exception e) {
+                    System.err.println("Warning: File upload failed, continuing without image: " + e.getMessage());
+                    e.printStackTrace();
+                    // Continue without image instead of failing the entire request
+=======
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
             // Set distribution groups if provided
             if (request.getDistributionGroupIds() != null && !request.getDistributionGroupIds().isEmpty()) {
                 Set<DistributionGroup> groups = new HashSet<>();
                 for (Long groupId : request.getDistributionGroupIds()) {
                     distributionGroupRepository.findById(groupId).ifPresent(groups::add);
+<<<<<<< Updated upstream
+=======
+=======
+            // Upload files to Supabase storage if provided
+            if (files != null && files.length > 0) {
+                // Limit to 10 images max
+                if (files.length > 10) {
+                    return ResponseEntity.status(400).body(Map.of("error", "Maximum 10 images per announcement"));
+                }
+                
+                List<String> fileUrls = announcementService.uploadMultipleToSupabase(files, "Announcement-Media-Bucket", "Media-Files");
+                
+                if (!fileUrls.isEmpty()) {
+                    announcement.setImageUrl(fileUrls.get(0)); // Backward compatibility
+                    announcement.setImageUrls(fileUrls); // Store all URLs
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
                 }
                 announcement.setDistributionGroups(groups);
             }
