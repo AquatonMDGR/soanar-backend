@@ -54,7 +54,7 @@ public class AnnouncementController {
     @PostMapping
     public ResponseEntity<?> create(
             @RequestHeader("Authorization") String authHeader,
-            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "files", required = false) MultipartFile[] files,
             @RequestParam("title") String title,
             @RequestParam("description") String description,
             @RequestParam(value = "startDate", required = false) String startDate,
@@ -72,15 +72,18 @@ public class AnnouncementController {
             announcement.setTitle(title);
             announcement.setDescription(description);
             
-            // Upload file to Supabase storage if provided
-            if (file != null && !file.isEmpty()) {
-                try {
-                    String fileUrl = announcementService.uploadToSupabase(file, "Announcement-Media-Bucket", "Media-Files");
-                    announcement.setImageUrl(fileUrl);
-                } catch (Exception e) {
-                    System.err.println("Warning: File upload failed, continuing without image: " + e.getMessage());
-                    e.printStackTrace();
-                    // Continue without image instead of failing the entire request
+            // Upload files to Supabase storage if provided
+            if (files != null && files.length > 0) {
+                // Limit to 10 images max
+                if (files.length > 10) {
+                    return ResponseEntity.status(400).body(Map.of("error", "Maximum 10 images per announcement"));
+                }
+                
+                List<String> fileUrls = announcementService.uploadMultipleToSupabase(files, "Announcement-Media-Bucket", "Media-Files");
+                
+                if (!fileUrls.isEmpty()) {
+                    announcement.setImageUrl(fileUrls.get(0)); // Backward compatibility
+                    announcement.setImageUrls(fileUrls); // Store all URLs
                 }
             }
             
@@ -108,7 +111,6 @@ public class AnnouncementController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String role = jwtUtil.extractRole(token);
-            String email = jwtUtil.extractEmail(token);
             
             if (!"OSAS".equals(role)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));

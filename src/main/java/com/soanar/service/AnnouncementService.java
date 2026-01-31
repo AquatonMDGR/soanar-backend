@@ -14,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -191,5 +192,27 @@ public class AnnouncementService {
             Thread.currentThread().interrupt();
             throw new IOException("Upload interrupted", e);
         }
+    }
+    
+    public List<String> uploadMultipleToSupabase(MultipartFile[] files, String bucketName, String folderPath) {
+        List<String> urls = new ArrayList<>();
+        
+        if (files == null || files.length == 0) {
+            return urls;
+        }
+        
+        for (MultipartFile file : files) {
+            if (file != null && !file.isEmpty()) {
+                try {
+                    String url = uploadToSupabase(file, bucketName, folderPath);
+                    urls.add(url);
+                } catch (Exception e) {
+                    System.err.println("Warning: Failed to upload file " + file.getOriginalFilename() + ": " + e.getMessage());
+                    // Continue with next file instead of failing completely
+                }
+            }
+        }
+        
+        return urls;
     }
 }

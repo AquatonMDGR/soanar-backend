@@ -1,9 +1,13 @@
 package com.soanar.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Type;
+import io.hypersistence.utils.hibernate.type.json.JsonType;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -35,6 +39,10 @@ public class Announcement {
 
     @Column(name = "image_url")
     private String imageUrl;
+    
+    @Column(name = "image_urls", columnDefinition = "jsonb DEFAULT '[]'::jsonb")
+    @Type(JsonType.class)
+    private List<String> imageUrls = new ArrayList<>();
     
     @Column(name = "start_date")
     private LocalDate startDate;
@@ -76,6 +84,9 @@ public class Announcement {
 
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    
+    public List<String> getImageUrls() { return imageUrls; }
+    public void setImageUrls(List<String> imageUrls) { this.imageUrls = imageUrls; }
     
     public LocalDate getStartDate() { return startDate; }
     public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
