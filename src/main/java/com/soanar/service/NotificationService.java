@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 @Service
@@ -95,11 +96,11 @@ public class NotificationService {
             );
         }
         
-        // Send emails to all students
+        // Send emails to all students (HTML, include image if present)
         if (!studentEmails.isEmpty()) {
             String subject = "New Announcement: " + announcement.getTitle();
-            String body = buildEmailBody(announcement);
-            emailService.sendTargetedEmail(studentEmails, subject, body);
+            String html = buildEmailHtmlBody(announcement);
+            emailService.sendTargetedEmail(studentEmails, subject, html);
         }
     }
     
@@ -135,11 +136,11 @@ public class NotificationService {
             }
         }
         
-        // Send emails to distribution group members
+        // Send emails to distribution group members (HTML)
         if (!recipientEmails.isEmpty()) {
             String subject = "New Announcement: " + announcement.getTitle();
-            String body = buildEmailBody(announcement);
-            emailService.sendTargetedEmail(recipientEmails, subject, body);
+            String html = buildEmailHtmlBody(announcement);
+            emailService.sendTargetedEmail(recipientEmails, subject, html);
         } else {
             System.out.println("No recipients found in distribution groups for announcement: " + announcement.getId());
         }
@@ -164,6 +165,28 @@ public class NotificationService {
         body.append("SONAR - Student Organization & Notification Announcement Resource");
         
         return body.toString();
+    }
+
+    /**
+     * Build an HTML email body for announcements (includes image if present).
+     */
+    private String buildEmailHtmlBody(Announcement announcement) {
+        StringBuilder html = new StringBuilder();
+        html.append("<html><body>");
+        html.append("<p>Hello,</p>");
+        html.append("<p>A new announcement has been posted:</p>");
+        html.append("<p><strong>Title:</strong> ").append(announcement.getTitle()).append("</p>");
+        if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
+            html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Announcement image\" style=\"max-width:600px;height:auto;\"/></p>");
+        }
+        html.append("<p><strong>Description:</strong><br/>").append(announcement.getDescription() != null ? announcement.getDescription() : "").append("</p>");
+        if (announcement.getPostedBy() != null) {
+            html.append("<p>Posted by: ").append(announcement.getPostedBy().getName()).append("</p>");
+        }
+        html.append("<p>Log in to SONAR to view more details.</p>");
+        html.append("<p>Best regards,<br/>SONAR - Student Organization & Notification Announcement Resource</p>");
+        html.append("</body></html>");
+        return html.toString();
     }
 
     /**
@@ -238,5 +261,26 @@ public class NotificationService {
         }
         
         createNotification(announcement, recipientEmail, "event-created", title, message);
+
+        // Send HTML email to the event creator including the event image if present
+        try {
+            String subject = title;
+            StringBuilder html = new StringBuilder();
+            html.append("<html><body>");
+            html.append("<p>Hello,</p>");
+            html.append("<p>").append(message).append("</p>");
+            if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
+                html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Event Image\" style=\"max-width:600px;height:auto;\"/></p>");
+            }
+            html.append("<p>Title: <strong>").append(announcement.getTitle()).append("</strong></p>");
+            html.append("<p>Description:<br/>").append(announcement.getDescription() != null ? announcement.getDescription() : "").append("</p>");
+            html.append("<p>Log in to SONAR to view more details.</p>");
+            html.append("<p>Best regards,<br/>SONAR - Student Organization & Notification Announcement Resource</p>");
+            html.append("</body></html>");
+
+            emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+        } catch (Exception e) {
+            System.err.println("Failed to send event-created email to " + recipientEmail + ": " + e.getMessage());
+        }
     }
 }
