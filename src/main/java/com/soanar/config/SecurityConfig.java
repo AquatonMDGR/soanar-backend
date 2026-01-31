@@ -40,7 +40,14 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/index.html", "/error", "/api/login", "/api/db/**").permitAll()
+                .requestMatchers(
+                    "/",
+                    "/index.html",
+                    "/error",
+                    "/api/login",
+                    "/api/db/**",
+                    "/api/auth/oauth/**"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .httpBasic(httpBasic -> httpBasic.disable());

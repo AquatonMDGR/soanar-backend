@@ -32,9 +32,6 @@ public class InstagramServiceImpl implements InstagramService {
     @Value("${instagram.api-key:}")
     private String instagramApiKey;
 
-    @Value("${instagram.context-user:system}")
-    private String defaultOrgId;
-
     private final CredentialService credentialService;
     private final ImageService imageService;
     private final RestTemplate restTemplate;
@@ -47,15 +44,8 @@ public class InstagramServiceImpl implements InstagramService {
         this.restTemplate = restTemplate;
     }
 
-    /**
-     * Set organization context (extracted from JWT in calling service)
-     */
-    public void setOrgContext(UUID orgId) {
-        // This will be called from CrosspostService with user's organization ID
-    }
-
     @Override
-    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image) throws Exception {
+    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception {
         logger.info("Posting announcement {} to Instagram", announcement.getId());
 
         // Instagram requires an image
@@ -63,7 +53,7 @@ public class InstagramServiceImpl implements InstagramService {
             throw new IllegalArgumentException("Instagram requires an image to post");
         }
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
         
         if (token.isEmpty()) {
@@ -171,10 +161,10 @@ public class InstagramServiceImpl implements InstagramService {
     }
 
     @Override
-    public void deletePost(String postId) throws Exception {
+    public void deletePost(String postId, UUID organizationId) throws Exception {
         logger.info("Deleting Instagram post: {}", postId);
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
 
         if (token.isEmpty()) {
@@ -192,10 +182,10 @@ public class InstagramServiceImpl implements InstagramService {
     }
 
     @Override
-    public Map<String, Object> getEngagement(String postId) throws Exception {
+    public Map<String, Object> getEngagement(String postId, UUID organizationId) throws Exception {
         logger.info("Getting engagement metrics for post: {}", postId);
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
 
         if (token.isEmpty()) {
@@ -237,10 +227,10 @@ public class InstagramServiceImpl implements InstagramService {
     }
 
     @Override
-    public boolean validateToken() throws Exception {
+    public boolean validateToken(UUID organizationId) throws Exception {
         logger.info("Validating Instagram token");
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
 
         if (token.isEmpty()) {
@@ -267,8 +257,8 @@ public class InstagramServiceImpl implements InstagramService {
     }
 
     @Override
-    public String getAccountId() throws Exception {
-        UUID orgId = getOrgContext();
+    public String getAccountId(UUID organizationId) throws Exception {
+        UUID orgId = organizationId;
         Optional<SocialMediaCredential> cred = credentialService.getCredential(orgId, SocialMediaCredential.Platform.INSTAGRAM);
 
         if (cred.isEmpty()) {
@@ -276,16 +266,6 @@ public class InstagramServiceImpl implements InstagramService {
         }
 
         return cred.get().getPageId();
-    }
-
-    private UUID getOrgContext() {
-        // In a real implementation, extract from SecurityContext or ThreadLocal
-        // For now, use a default
-        try {
-            return UUID.fromString("00000000-0000-0000-0000-000000000001");
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private String buildDefaultCaption(Announcement announcement) {

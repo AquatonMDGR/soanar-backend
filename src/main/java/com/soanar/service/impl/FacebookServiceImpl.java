@@ -33,9 +33,6 @@ public class FacebookServiceImpl implements FacebookService {
     @Value("${facebook.api-key:}")
     private String facebookApiKey;
 
-    @Value("${facebook.context-user:system}") // Default org context
-    private String defaultOrgId;
-
     private final CredentialService credentialService;
     private final ImageService imageService;
     private final RestTemplate restTemplate;
@@ -48,19 +45,11 @@ public class FacebookServiceImpl implements FacebookService {
         this.restTemplate = restTemplate;
     }
 
-    /**
-     * Set organization context (extracted from JWT in calling service)
-     */
-    public void setOrgContext(UUID orgId) {
-        // This will be called from CrosspostService with user's organization ID
-    }
-
     @Override
-    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image) throws Exception {
+    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception {
         logger.info("Posting announcement {} to Facebook", announcement.getId());
 
-        // Get default org ID if not set (this should be passed from CrosspostService)
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
 
         // Get credentials
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
@@ -187,10 +176,10 @@ public class FacebookServiceImpl implements FacebookService {
     }
 
     @Override
-    public void deletePost(String postId) throws Exception {
+    public void deletePost(String postId, UUID organizationId) throws Exception {
         logger.info("Deleting Facebook post: {}", postId);
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
 
         if (token.isEmpty()) {
@@ -208,10 +197,10 @@ public class FacebookServiceImpl implements FacebookService {
     }
 
     @Override
-    public Map<String, Object> getEngagement(String postId) throws Exception {
+    public Map<String, Object> getEngagement(String postId, UUID organizationId) throws Exception {
         logger.info("Getting engagement metrics for post: {}", postId);
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
 
         if (token.isEmpty()) {
@@ -274,10 +263,10 @@ public class FacebookServiceImpl implements FacebookService {
     }
 
     @Override
-    public boolean validateToken() throws Exception {
+    public boolean validateToken(UUID organizationId) throws Exception {
         logger.info("Validating Facebook token");
 
-        UUID orgId = getOrgContext();
+        UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
 
         if (token.isEmpty()) {
@@ -304,8 +293,8 @@ public class FacebookServiceImpl implements FacebookService {
     }
 
     @Override
-    public String getPageId() throws Exception {
-        UUID orgId = getOrgContext();
+    public String getPageId(UUID organizationId) throws Exception {
+        UUID orgId = organizationId;
         Optional<SocialMediaCredential> cred = credentialService.getCredential(orgId, SocialMediaCredential.Platform.FACEBOOK);
 
         if (cred.isEmpty()) {
@@ -313,16 +302,6 @@ public class FacebookServiceImpl implements FacebookService {
         }
 
         return cred.get().getPageId();
-    }
-
-    private UUID getOrgContext() {
-        // In a real implementation, extract from SecurityContext or ThreadLocal
-        // For now, use a default
-        try {
-            return UUID.fromString("00000000-0000-0000-0000-000000000001");
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private String buildDefaultCaption(Announcement announcement) {

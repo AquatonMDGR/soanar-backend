@@ -12,8 +12,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/announcements")
@@ -105,6 +108,7 @@ public class AnnouncementController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String role = jwtUtil.extractRole(token);
+            String email = jwtUtil.extractEmail(token);
             
             if (!"OSAS".equals(role)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));
@@ -197,6 +201,7 @@ public class AnnouncementController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String role = jwtUtil.extractRole(token);
+            String email = jwtUtil.extractEmail(token);
 
                 // Only Student Organization, OSAS, or Academic can crosspost
             Announcement announcement = announcementService.findById(id)
@@ -219,8 +224,9 @@ public class AnnouncementController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing crosspost request"));
             }
 
-            // Crosspost to selected platforms
-            crosspostService.crosspostAnnouncement(announcement, resolvedRequest, file);
+            // Crosspost to selected platforms (user-scoped)
+            UUID organizationId = UUID.nameUUIDFromBytes(email.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
+            crosspostService.crosspostAnnouncement(announcement, resolvedRequest, file, organizationId);
 
             return ResponseEntity.ok(Map.of(
                     "message", "Crossposting initiated",

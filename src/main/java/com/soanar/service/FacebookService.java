@@ -4,6 +4,7 @@ import com.soanar.model.Announcement;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Service for posting announcements to Facebook
@@ -17,25 +18,25 @@ public interface FacebookService {
      * @param image Optional image to attach (will be resized if provided)
      * @return Platform-specific post ID
      */
-    String postAnnouncement(Announcement announcement, String caption, MultipartFile image) throws Exception;
+    String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception;
 
     /**
      * Delete a post from Facebook
      */
-    void deletePost(String postId) throws Exception;
+    void deletePost(String postId, UUID organizationId) throws Exception;
 
     /**
      * Get engagement metrics for a post (likes, comments, shares, reach)
      */
-    Map<String, Object> getEngagement(String postId) throws Exception;
+    Map<String, Object> getEngagement(String postId, UUID organizationId) throws Exception;
 
     /**
      * Validate if credentials are still valid
      */
-    boolean validateToken() throws Exception;
+    boolean validateToken(UUID organizationId) throws Exception;
 
     /**
      * Get page ID from stored credentials
      */
-    String getPageId() throws Exception;
+    String getPageId(UUID organizationId) throws Exception;
 }

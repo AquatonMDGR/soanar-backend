@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 
@@ -44,15 +45,15 @@ public class CrosspostServiceImpl implements CrosspostService {
 
     @Override
     @Async
-    public void crosspostAnnouncement(Announcement announcement, CrosspostRequest request, MultipartFile image) throws Exception {
+    public void crosspostAnnouncement(Announcement announcement, CrosspostRequest request, MultipartFile image, UUID organizationId) throws Exception {
         logger.info("Starting crosspost for announcement: {}", announcement.getId());
 
         if (request.getFacebook() != null && request.getFacebook().getEnabled()) {
-            postToPlatform(announcement, request.getFacebook().getCaption(), image, "facebook");
+            postToPlatform(announcement, request.getFacebook().getCaption(), image, "facebook", organizationId);
         }
 
         if (request.getInstagram() != null && request.getInstagram().getEnabled()) {
-            postToPlatform(announcement, request.getInstagram().getCaption(), image, "instagram");
+            postToPlatform(announcement, request.getInstagram().getCaption(), image, "instagram", organizationId);
         }
 
         logger.info("Crosspost completed for announcement: {}", announcement.getId());
@@ -60,7 +61,7 @@ public class CrosspostServiceImpl implements CrosspostService {
 
     @Override
     public SocialMediaPost postToPlatform(Announcement announcement, String caption,
-                                         MultipartFile image, String platform) throws Exception {
+                                         MultipartFile image, String platform, UUID organizationId) throws Exception {
         logger.info("Posting to {}: {}", platform, announcement.getId());
 
         SocialMediaCredential.Platform platformEnum = SocialMediaCredential.Platform.valueOf(platform.toUpperCase());
@@ -77,11 +78,11 @@ public class CrosspostServiceImpl implements CrosspostService {
             String postId;
             if (platformEnum == SocialMediaCredential.Platform.FACEBOOK) {
                 postId = retryService.executeWithRetry(() ->
-                        facebookService.postAnnouncement(announcement, caption, image)
+                        facebookService.postAnnouncement(announcement, caption, image, organizationId)
                 );
             } else {
                 postId = retryService.executeWithRetry(() ->
-                        instagramService.postAnnouncement(announcement, caption, image)
+                        instagramService.postAnnouncement(announcement, caption, image, organizationId)
                 );
             }
 
@@ -116,11 +117,12 @@ public class CrosspostServiceImpl implements CrosspostService {
                     continue;
                 }
 
+                UUID orgId = resolveOrganizationId(post.getAnnouncement());
                 Map<String, Object> engagement;
                 if (post.getPlatform() == SocialMediaCredential.Platform.FACEBOOK) {
-                    engagement = facebookService.getEngagement(post.getPostId());
+                    engagement = facebookService.getEngagement(post.getPostId(), orgId);
                 } else {
-                    engagement = instagramService.getEngagement(post.getPostId());
+                    engagement = instagramService.getEngagement(post.getPostId(), orgId);
                 }
 
                 post.setEngagementData(engagement);
@@ -148,11 +150,12 @@ public class CrosspostServiceImpl implements CrosspostService {
 
         for (SocialMediaPost post : scheduledPosts) {
             try {
+                UUID orgId = resolveOrganizationId(post.getAnnouncement());
                 String postId;
                 if (post.getPlatform() == SocialMediaCredential.Platform.FACEBOOK) {
-                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null);
+                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
                 } else {
-                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null);
+                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
                 }
 
                 post.setPostId(postId);
@@ -188,11 +191,12 @@ public class CrosspostServiceImpl implements CrosspostService {
 
         for (SocialMediaPost post : failedPosts) {
             try {
+                UUID orgId = resolveOrganizationId(post.getAnnouncement());
                 String postId;
                 if (post.getPlatform() == SocialMediaCredential.Platform.FACEBOOK) {
-                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null);
+                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
                 } else {
-                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null);
+                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
                 }
 
                 post.setPostId(postId);
@@ -223,10 +227,11 @@ public class CrosspostServiceImpl implements CrosspostService {
                     continue;
                 }
 
+                UUID orgId = resolveOrganizationId(post.getAnnouncement());
                 if (post.getPlatform() == SocialMediaCredential.Platform.FACEBOOK) {
-                    facebookService.deletePost(post.getPostId());
+                    facebookService.deletePost(post.getPostId(), orgId);
                 } else {
-                    instagramService.deletePost(post.getPostId());
+                    instagramService.deletePost(post.getPostId(), orgId);
                 }
 
                 post.setStatus(SocialMediaPost.PostStatus.DELETED);
@@ -251,5 +256,13 @@ public class CrosspostServiceImpl implements CrosspostService {
     public SocialMediaPost getPost(UUID postId) {
         logger.debug("Getting post: {}", postId);
         return postRepository.findById(postId).orElse(null);
+    }
+
+    private UUID resolveOrganizationId(Announcement announcement) {
+        if (announcement == null || announcement.getPostedBy() == null || announcement.getPostedBy().getSchoolEmail() == null) {
+            throw new IllegalStateException("Unable to resolve user context for crossposting");
+        }
+        String email = announcement.getPostedBy().getSchoolEmail();
+        return UUID.nameUUIDFromBytes(email.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -11,6 +11,7 @@ import org.springframework.web.client.RestTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.UUID;
 
@@ -25,10 +26,6 @@ public class OAuthCallbackController {
 
     private static final Logger logger = LoggerFactory.getLogger(OAuthCallbackController.class);
     
-    // Default organization UUID for single-tenant deployment
-    // In multi-tenant setup, extract this from user context or request
-    private static final UUID DEFAULT_ORG_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
-
     @Value("${facebook.client-id:}")
     private String facebookClientId;
 
@@ -71,29 +68,33 @@ public class OAuthCallbackController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
 
         try {
-            String resolvedProvider = (provider != null && !provider.isBlank()) ? provider : state;
+            ResolvedState resolved = resolveState(provider, state);
+            String resolvedProvider = resolved.provider;
             if (resolvedProvider == null || resolvedProvider.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing provider"));
             }
 
-            // Get user email from JWT
+            // Get user email from JWT (Authorization header preferred; fallback to state token)
             String token = authHeader != null ? authHeader.replace("Bearer ", "") : null;
-            String email = null;
-            if (token != null && !token.isEmpty()) {
-                String emailFromToken = jwtUtil.extractEmail(token);
-                String role = jwtUtil.extractRole(token);
-                userRepository.findBySchoolEmail(emailFromToken)
-                        .orElseThrow(() -> new RuntimeException("User not found: " + emailFromToken));
-                if (!("Student Organization".equals(role) || "OSAS".equals(role) || "Academic".equals(role))) {
-                    return ResponseEntity.status(403).body(Map.of("error", "Not authorized to connect social media"));
-                }
-                email = emailFromToken;
+            if ((token == null || token.isBlank()) && resolved.token != null) {
+                token = resolved.token;
             }
-            
-            // Use default organization ID (single-tenant mode)
-            // In multi-tenant: extract from user.getOrganizationId() or JWT claims
-            UUID organizationId = DEFAULT_ORG_ID;
-            logger.info("Processing OAuth callback for user {} and provider: {}", email, resolvedProvider);
+            if (token == null || token.isBlank()) {
+                return ResponseEntity.status(401).body(Map.of("error", "Missing user token"));
+            }
+
+            String emailFromToken = jwtUtil.extractEmail(token);
+            String tokenRole = jwtUtil.extractRole(token);
+            var user = userRepository.findBySchoolEmail(emailFromToken)
+                    .orElseThrow(() -> new RuntimeException("User not found: " + emailFromToken));
+            String effectiveRole = isAuthorizedRole(tokenRole) ? tokenRole : user.getRole();
+            if (!isAuthorizedRole(effectiveRole)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Not authorized to connect social media"));
+            }
+
+            // User-scoped organization ID (derived from email to avoid hardcoding)
+            UUID organizationId = resolveOrganizationId(emailFromToken);
+            logger.info("Processing OAuth callback for user {} and provider: {}", emailFromToken, resolvedProvider);
 
             // Exchange code for access token
             Map<String, Object> tokenResponse = exchangeCodeForToken(resolvedProvider, code);
@@ -105,7 +106,7 @@ public class OAuthCallbackController {
 
             String accessToken = (String) tokenResponse.get("access_token");
             String pageId = (String) tokenResponse.getOrDefault("page_id", "");
-            Long expiresIn = (Long) tokenResponse.getOrDefault("expires_in", 5184000L); // 60 days default
+            Long expiresIn = parseExpiresIn(tokenResponse.get("expires_in"), 5184000L); // 60 days default
 
             // Store credential
             SocialMediaCredential.Platform platformEnum = 
@@ -181,11 +182,23 @@ public class OAuthCallbackController {
                 return null;
             }
 
-            // For Facebook, also fetch page ID
+            // For Facebook, also fetch page ID and page access token
             if ("facebook".equalsIgnoreCase(provider)) {
-                String accessToken = (String) response.get("access_token");
-                String pageId = fetchFacebookPageId(accessToken);
-                response.put("page_id", pageId);
+                String userAccessToken = (String) response.get("access_token");
+                Map<String, String> pageData = fetchFacebookPrimaryPage(userAccessToken);
+                response.put("page_id", pageData.getOrDefault("page_id", ""));
+                String pageAccessToken = pageData.getOrDefault("page_access_token", "");
+                if (!pageAccessToken.isBlank()) {
+                    response.put("access_token", pageAccessToken);
+                }
+            }
+
+            // For Instagram, use returned user_id as page_id when present
+            if ("instagram".equalsIgnoreCase(provider) && !response.containsKey("page_id")) {
+                Object userId = response.get("user_id");
+                if (userId != null) {
+                    response.put("page_id", String.valueOf(userId));
+                }
             }
 
             return response;
@@ -199,9 +212,10 @@ public class OAuthCallbackController {
     /**
      * Fetch Facebook page ID from access token
      */
-    private String fetchFacebookPageId(String accessToken) {
+    private Map<String, String> fetchFacebookPrimaryPage(String userAccessToken) {
+        Map<String, String> result = new HashMap<>();
         try {
-            String url = String.format("https://graph.facebook.com/v18.0/me/accounts?access_token=%s", accessToken);
+            String url = String.format("https://graph.facebook.com/v18.0/me/accounts?access_token=%s", userAccessToken);
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
 
@@ -209,13 +223,15 @@ public class OAuthCallbackController {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> data = (List<Map<String, Object>>) response.get("data");
                 if (!data.isEmpty()) {
-                    return (String) data.get(0).get("id");
+                    Map<String, Object> page = data.get(0);
+                    result.put("page_id", String.valueOf(page.getOrDefault("id", "")));
+                    result.put("page_access_token", String.valueOf(page.getOrDefault("access_token", "")));
                 }
             }
         } catch (Exception e) {
-            logger.warn("Failed to fetch Facebook page ID", e);
+            logger.warn("Failed to fetch Facebook page data", e);
         }
-        return "";
+        return result;
     }
 
     /**
@@ -230,14 +246,15 @@ public class OAuthCallbackController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String email = jwtUtil.extractEmail(token);
-            String role = jwtUtil.extractRole(token);
-            userRepository.findBySchoolEmail(email)
+            String tokenRole = jwtUtil.extractRole(token);
+            var user = userRepository.findBySchoolEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
-            if (!("Student Organization".equals(role) || "OSAS".equals(role) || "Academic".equals(role))) {
+            String effectiveRole = isAuthorizedRole(tokenRole) ? tokenRole : user.getRole();
+            if (!isAuthorizedRole(effectiveRole)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Not authorized to view social connections"));
             }
-            
-            UUID organizationId = DEFAULT_ORG_ID;
+
+            UUID organizationId = resolveOrganizationId(email);
 
             SocialMediaCredential.Platform platformEnum = 
                     SocialMediaCredential.Platform.valueOf(platform.toUpperCase());
@@ -269,14 +286,15 @@ public class OAuthCallbackController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String email = jwtUtil.extractEmail(token);
-            String role = jwtUtil.extractRole(token);
-            userRepository.findBySchoolEmail(email)
+            String tokenRole = jwtUtil.extractRole(token);
+            var user = userRepository.findBySchoolEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
-            if (!("Student Organization".equals(role) || "OSAS".equals(role) || "Academic".equals(role))) {
+            String effectiveRole = isAuthorizedRole(tokenRole) ? tokenRole : user.getRole();
+            if (!isAuthorizedRole(effectiveRole)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Not authorized to disconnect social media"));
             }
-            
-            UUID organizationId = DEFAULT_ORG_ID;
+
+            UUID organizationId = resolveOrganizationId(email);
 
             SocialMediaCredential.Platform platformEnum = 
                     SocialMediaCredential.Platform.valueOf(platform.toUpperCase());
@@ -291,5 +309,59 @@ public class OAuthCallbackController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private UUID resolveOrganizationId(String email) {
+        return UUID.nameUUIDFromBytes(email.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Long parseExpiresIn(Object value, Long defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private boolean isAuthorizedRole(String role) {
+        if (role == null) {
+            return false;
+        }
+        String normalized = role.trim();
+        return "Student Organization".equalsIgnoreCase(normalized)
+                || "OSAS".equalsIgnoreCase(normalized)
+                || "Academic".equalsIgnoreCase(normalized);
+    }
+
+    private ResolvedState resolveState(String provider, String state) {
+        ResolvedState resolved = new ResolvedState();
+        if (provider != null && !provider.isBlank()) {
+            resolved.provider = provider;
+        }
+        if (state != null && !state.isBlank()) {
+            if (state.contains("|")) {
+                String[] parts = state.split("\\|", 2);
+                if (resolved.provider == null || resolved.provider.isBlank()) {
+                    resolved.provider = parts[0];
+                }
+                if (parts.length > 1 && !parts[1].isBlank()) {
+                    resolved.token = parts[1];
+                }
+            } else if (resolved.provider == null || resolved.provider.isBlank()) {
+                resolved.provider = state;
+            }
+        }
+        return resolved;
+    }
+
+    private static class ResolvedState {
+        private String provider;
+        private String token;
     }
 }
