@@ -40,6 +40,7 @@ public class AuthController {
             // Verify token with Google
             RestTemplate restTemplate = new RestTemplate();
             String googleApiUrl = "https://oauth2.googleapis.com/tokeninfo?id_token=" + googleToken;
+            @SuppressWarnings("unchecked")
             Map<String, Object> googleResponse = restTemplate.getForObject(googleApiUrl, Map.class);
 
             if (googleResponse == null || !googleResponse.containsKey("email")) {

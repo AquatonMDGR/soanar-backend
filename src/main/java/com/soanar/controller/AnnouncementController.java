@@ -1,21 +1,19 @@
 package com.soanar.controller;
 
-import com.soanar.dto.AnnouncementRequest;
+import com.soanar.dto.CrosspostRequest;
 import com.soanar.model.Announcement;
-import com.soanar.model.DistributionGroup;
 import com.soanar.model.User;
-import com.soanar.repository.DistributionGroupRepository;
 import com.soanar.service.AnnouncementService;
+import com.soanar.service.CrosspostService;
 import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/api/announcements")
@@ -25,16 +23,19 @@ public class AnnouncementController {
     private final AnnouncementService announcementService;
     private final UserService userService;
     private final JwtUtil jwtUtil;
-    private final DistributionGroupRepository distributionGroupRepository;
+    private final CrosspostService crosspostService;
+    private final ObjectMapper objectMapper;
 
     public AnnouncementController(AnnouncementService announcementService, 
                                    UserService userService,
                                    JwtUtil jwtUtil,
-                                   DistributionGroupRepository distributionGroupRepository) {
+                                   CrosspostService crosspostService,
+                                   ObjectMapper objectMapper) {
         this.announcementService = announcementService;
         this.userService = userService;
         this.jwtUtil = jwtUtil;
-        this.distributionGroupRepository = distributionGroupRepository;
+        this.crosspostService = crosspostService;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping
@@ -177,6 +178,76 @@ public class AnnouncementController {
             return ResponseEntity.ok(Map.of("message", "Announcement deleted successfully"));
         } catch (Exception e) {
             e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Crosspost an announcement to Facebook and/or Instagram
+     * POST /api/announcements/{id}/crosspost
+     */
+    @PostMapping("/{id}/crosspost")
+    public ResponseEntity<?> crosspost(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long id,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestPart(value = "crosspostRequest", required = false) String crosspostRequestJson,
+            @RequestBody(required = false) CrosspostRequest request) {
+
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            String role = jwtUtil.extractRole(token);
+
+                // Only Student Organization, OSAS, or Academic can crosspost
+            Announcement announcement = announcementService.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Announcement not found"));
+
+                boolean isAuthorized = "Student Organization".equals(role)
+                    || "OSAS".equals(role)
+                    || "Academic".equals(role);
+
+            if (!isAuthorized) {
+                return ResponseEntity.status(403).body(Map.of("error", "Not authorized to crosspost"));
+            }
+
+            CrosspostRequest resolvedRequest = request;
+            if (resolvedRequest == null && crosspostRequestJson != null && !crosspostRequestJson.isBlank()) {
+                resolvedRequest = objectMapper.readValue(crosspostRequestJson, CrosspostRequest.class);
+            }
+
+            if (resolvedRequest == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Missing crosspost request"));
+            }
+
+            // Crosspost to selected platforms
+            crosspostService.crosspostAnnouncement(announcement, resolvedRequest, file);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Crossposting initiated",
+                    "announcementId", id
+            ));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Get crossposting status for an announcement
+     * GET /api/announcements/{id}/crosspost-status
+     */
+    @GetMapping("/{id}/crosspost-status")
+    public ResponseEntity<?> getCrosspostStatus(
+            @PathVariable Long id) {
+
+        try {
+            List<?> posts = crosspostService.getPostsForAnnouncement(id);
+            return ResponseEntity.ok(Map.of(
+                    "announcementId", id,
+                    "crosspostStatus", posts
+            ));
+        } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }

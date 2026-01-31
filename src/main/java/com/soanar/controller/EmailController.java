@@ -1,13 +1,13 @@
 package com.soanar.controller;
 
 import com.soanar.service.EmailService;
-import com.soanar.service.DistributionGroupService;
 import com.soanar.util.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/emails")
@@ -15,14 +15,11 @@ import java.util.Map;
 public class EmailController {
 
     private final EmailService emailService;
-    private final DistributionGroupService distributionGroupService;
     private final JwtUtil jwtUtil;
 
     public EmailController(EmailService emailService, 
-                           DistributionGroupService distributionGroupService,
                            JwtUtil jwtUtil) {
         this.emailService = emailService;
-        this.distributionGroupService = distributionGroupService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -38,7 +35,7 @@ public class EmailController {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
-        List<String> recipients = (List<String>) body.get("recipients");
+        List<String> recipients = extractRecipients(body);
         String subject = (String) body.get("subject");
         String emailBody = (String) body.get("body");
 
@@ -58,11 +55,22 @@ public class EmailController {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
-        List<String> recipients = (List<String>) body.get("recipients");
+        List<String> recipients = extractRecipients(body);
         String subject = (String) body.get("subject");
         String emailBody = (String) body.get("body");
 
         emailService.sendTermlyNewsletter(recipients, subject, emailBody);
         return ResponseEntity.ok(Map.of("message", "Newsletter sent successfully"));
+    }
+
+    private List<String> extractRecipients(Map<String, Object> body) {
+        Object recipientsValue = body.get("recipients");
+        if (recipientsValue instanceof List<?> list) {
+            return list.stream()
+                    .filter(Objects::nonNull)
+                    .map(Object::toString)
+                    .toList();
+        }
+        return List.of();
     }
 }
