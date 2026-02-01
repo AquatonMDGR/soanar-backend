@@ -79,11 +79,18 @@ public class AnnouncementController {
                     return ResponseEntity.status(400).body(Map.of("error", "Maximum 10 images per announcement"));
                 }
                 
+                System.out.println("DEBUG Controller: Uploading " + files.length + " files to Supabase");
                 List<String> fileUrls = announcementService.uploadMultipleToSupabase(files, "Announcement-Media-Bucket", "Media-Files");
+                System.out.println("DEBUG Controller: Got " + fileUrls.size() + " URLs back");
+                for (int i = 0; i < fileUrls.size(); i++) {
+                    System.out.println("DEBUG Controller: fileUrls[" + i + "] = " + fileUrls.get(i));
+                }
                 
                 if (!fileUrls.isEmpty()) {
                     announcement.setImageUrl(fileUrls.get(0)); // Backward compatibility
                     announcement.setImageUrls(fileUrls); // Store all URLs
+                    System.out.println("DEBUG Controller: Set imageUrl = " + fileUrls.get(0));
+                    System.out.println("DEBUG Controller: Set imageUrls with " + fileUrls.size() + " items");
                 }
             }
             
@@ -259,4 +266,31 @@ public class AnnouncementController {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
+
+    /**
+     * DEBUG: Check imageUrls in database for specific announcement
+     * GET /api/announcements/{id}/debug-images
+     */
+    @GetMapping("/{id}/debug-images")
+    public ResponseEntity<?> debugImages(@PathVariable Long id) {
+        try {
+            Announcement a = announcementService.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
+            
+            System.out.println("DEBUG /debug-images: Announcement ID " + id);
+            System.out.println("DEBUG /debug-images: imageUrl = " + a.getImageUrl());
+            System.out.println("DEBUG /debug-images: imageUrls = " + a.getImageUrls());
+            System.out.println("DEBUG /debug-images: imageUrls size = " + (a.getImageUrls() != null ? a.getImageUrls().size() : "NULL"));
+            
+            return ResponseEntity.ok(Map.of(
+                    "id", a.getId(),
+                    "title", a.getTitle(),
+                    "imageUrl", a.getImageUrl(),
+                    "imageUrls", a.getImageUrls(),
+                    "imageUrlsSize", a.getImageUrls() != null ? a.getImageUrls().size() : 0
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
 }
+

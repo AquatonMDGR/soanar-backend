@@ -66,6 +66,17 @@ public class AnnouncementService {
         
         try {
             Announcement saved = announcementRepository.save(a);
+            announcementRepository.flush();  // Ensure data is flushed to database
+            
+            // DEBUG: Log the saved announcement details
+            System.out.println("DEBUG: Announcement saved and flushed with ID: " + saved.getId());
+            System.out.println("DEBUG: imageUrl: " + saved.getImageUrl());
+            System.out.println("DEBUG: imageUrls size: " + (saved.getImageUrls() != null ? saved.getImageUrls().size() : "NULL"));
+            if (saved.getImageUrls() != null) {
+                for (int i = 0; i < saved.getImageUrls().size(); i++) {
+                    System.out.println("DEBUG: imageUrls[" + i + "]: " + saved.getImageUrls().get(i));
+                }
+            }
             
             // Trigger notifications based on role (in separate transactions to avoid abort)
             try {
@@ -114,6 +125,16 @@ public class AnnouncementService {
     @Transactional
     public void notifyAfterApproval(Long id, boolean approved) {
         Announcement a = announcementRepository.findById(id).orElseThrow();
+        
+        // DEBUG: Check imageUrls after fetch from DB
+        System.out.println("DEBUG notifyAfterApproval: imageUrl = " + a.getImageUrl());
+        System.out.println("DEBUG notifyAfterApproval: imageUrls size = " + (a.getImageUrls() != null ? a.getImageUrls().size() : "NULL"));
+        if (a.getImageUrls() != null) {
+            for (int i = 0; i < a.getImageUrls().size(); i++) {
+                System.out.println("DEBUG notifyAfterApproval: imageUrls[" + i + "] = " + a.getImageUrls().get(i));
+            }
+        }
+        
         try {
             if (a.getPostedBy() != null) {
                 // Notify the poster about approval/rejection

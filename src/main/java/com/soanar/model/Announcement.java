@@ -3,6 +3,7 @@ package com.soanar.model;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Type;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -38,10 +39,12 @@ public class Announcement {
     private Instant publishedAt;
 
     @Column(name = "image_url")
+    @JsonProperty("imageUrl")
     private String imageUrl;
     
     @Column(name = "image_urls", columnDefinition = "jsonb DEFAULT '[]'::jsonb")
     @Type(JsonType.class)
+    @JsonProperty("imageUrls")
     private List<String> imageUrls = new ArrayList<>();
     
     @Column(name = "start_date")
@@ -85,8 +88,16 @@ public class Announcement {
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     
-    public List<String> getImageUrls() { return imageUrls; }
-    public void setImageUrls(List<String> imageUrls) { this.imageUrls = imageUrls; }
+    public List<String> getImageUrls() { 
+        // Ensure never null
+        if (this.imageUrls == null) {
+            this.imageUrls = new ArrayList<>();
+        }
+        return imageUrls; 
+    }
+    public void setImageUrls(List<String> imageUrls) { 
+        this.imageUrls = imageUrls != null ? imageUrls : new ArrayList<>(); 
+    }
     
     public LocalDate getStartDate() { return startDate; }
     public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
