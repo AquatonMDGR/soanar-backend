@@ -168,7 +168,7 @@ public class NotificationService {
     }
 
     /**
-     * Build an HTML email body for announcements (includes image if present).
+     * Build an HTML email body for announcements (includes all images from imageUrls array).
      */
     private String buildEmailHtmlBody(Announcement announcement) {
         StringBuilder html = new StringBuilder();
@@ -176,9 +176,33 @@ public class NotificationService {
         html.append("<p>Hello,</p>");
         html.append("<p>A new announcement has been posted:</p>");
         html.append("<p><strong>Title:</strong> ").append(announcement.getTitle()).append("</p>");
-        if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
-            html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Announcement image\" style=\"max-width:600px;height:auto;\"/></p>");
+        
+        // DEBUG: Log image details
+        System.out.println("DEBUG buildEmailHtmlBody: imageUrl = " + announcement.getImageUrl());
+        System.out.println("DEBUG buildEmailHtmlBody: imageUrls size = " + (announcement.getImageUrls() != null ? announcement.getImageUrls().size() : "NULL"));
+        if (announcement.getImageUrls() != null) {
+            for (int i = 0; i < announcement.getImageUrls().size(); i++) {
+                System.out.println("DEBUG buildEmailHtmlBody: imageUrls[" + i + "] = " + announcement.getImageUrls().get(i));
+            }
         }
+        
+        // Include all images from imageUrls array
+        if (announcement.getImageUrls() != null && !announcement.getImageUrls().isEmpty()) {
+            System.out.println("DEBUG buildEmailHtmlBody: Adding " + announcement.getImageUrls().size() + " images to email");
+            for (String imageUrl : announcement.getImageUrls()) {
+                if (imageUrl != null && !imageUrl.isBlank()) {
+                    System.out.println("DEBUG buildEmailHtmlBody: Adding image URL: " + imageUrl);
+                    html.append("<p><img src=\"").append(imageUrl).append("\" alt=\"Announcement image\" style=\"max-width:600px;height:auto;margin:10px 0;\"/></p>");
+                }
+            }
+        } else if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
+            // Fallback to single imageUrl for backward compatibility
+            System.out.println("DEBUG buildEmailHtmlBody: Fallback - using single imageUrl: " + announcement.getImageUrl());
+            html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Announcement image\" style=\"max-width:600px;height:auto;\"/></p>");
+        } else {
+            System.out.println("DEBUG buildEmailHtmlBody: NO IMAGES FOUND - imageUrls is " + (announcement.getImageUrls() == null ? "NULL" : "EMPTY") + ", imageUrl is " + (announcement.getImageUrl() == null ? "NULL" : "EMPTY"));
+        }
+        
         html.append("<p><strong>Description:</strong><br/>").append(announcement.getDescription() != null ? announcement.getDescription() : "").append("</p>");
         if (announcement.getPostedBy() != null) {
             html.append("<p>Posted by: ").append(announcement.getPostedBy().getName()).append("</p>");
@@ -262,16 +286,26 @@ public class NotificationService {
         
         createNotification(announcement, recipientEmail, "event-created", title, message);
 
-        // Send HTML email to the event creator including the event image if present
+        // Send HTML email to the event creator including all event images if present
         try {
             String subject = title;
             StringBuilder html = new StringBuilder();
             html.append("<html><body>");
             html.append("<p>Hello,</p>");
             html.append("<p>").append(message).append("</p>");
-            if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
+            
+            // Include all images from imageUrls array
+            if (announcement.getImageUrls() != null && !announcement.getImageUrls().isEmpty()) {
+                for (String imageUrl : announcement.getImageUrls()) {
+                    if (imageUrl != null && !imageUrl.isBlank()) {
+                        html.append("<p><img src=\"").append(imageUrl).append("\" alt=\"Event Image\" style=\"max-width:600px;height:auto;margin:10px 0;\"/></p>");
+                    }
+                }
+            } else if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
+                // Fallback to single imageUrl for backward compatibility
                 html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Event Image\" style=\"max-width:600px;height:auto;\"/></p>");
             }
+            
             html.append("<p>Title: <strong>").append(announcement.getTitle()).append("</strong></p>");
             html.append("<p>Description:<br/>").append(announcement.getDescription() != null ? announcement.getDescription() : "").append("</p>");
             html.append("<p>Log in to SONAR to view more details.</p>");

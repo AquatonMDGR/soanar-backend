@@ -15,7 +15,4 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
     
     @Query("SELECT a FROM Announcement a WHERE a.status IN :statuses ORDER BY a.createdAt DESC")
     List<Announcement> findByStatusIn(@Param("statuses") List<String> statuses);
-    
-    @Query("SELECT a FROM Announcement a ORDER BY a.createdAt DESC")
-    List<Announcement> findAll();
 }
