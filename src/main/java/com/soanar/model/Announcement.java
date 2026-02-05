@@ -52,14 +52,6 @@ public class Announcement {
 
     @Column(name = "end_date")
     private LocalDate endDate;
-    
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "announcement_distribution_groups",
-        joinColumns = @JoinColumn(name = "announcement_id"),
-        inverseJoinColumns = @JoinColumn(name = "group_id")
-    )
-    private Set<DistributionGroup> distributionGroups = new HashSet<>();
 
     public Announcement() {}
 
@@ -104,8 +96,5 @@ public class Announcement {
 
     public LocalDate getEndDate() { return endDate; }
     public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
-    
-    public Set<DistributionGroup> getDistributionGroups() { return distributionGroups; }
-    public void setDistributionGroups(Set<DistributionGroup> distributionGroups) { this.distributionGroups = distributionGroups; }
 }
 
