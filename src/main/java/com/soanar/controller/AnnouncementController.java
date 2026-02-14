@@ -9,6 +9,7 @@ import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -199,13 +200,12 @@ public class AnnouncementController {
      * Crosspost an announcement to Facebook and/or Instagram
      * POST /api/announcements/{id}/crosspost
      */
-    @PostMapping("/{id}/crosspost")
+    @PostMapping(value = "/{id}/crosspost", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> crosspost(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long id,
-            @RequestParam(value = "file", required = false) MultipartFile file,
-            @RequestPart(value = "crosspostRequest", required = false) String crosspostRequestJson,
-            @RequestBody(required = false) CrosspostRequest request) {
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestPart(value = "crosspostRequest", required = false) String crosspostRequestJson) {
 
         try {
             String token = authHeader.replace("Bearer ", "");
@@ -224,8 +224,8 @@ public class AnnouncementController {
                 return ResponseEntity.status(403).body(Map.of("error", "Not authorized to crosspost"));
             }
 
-            CrosspostRequest resolvedRequest = request;
-            if (resolvedRequest == null && crosspostRequestJson != null && !crosspostRequestJson.isBlank()) {
+            CrosspostRequest resolvedRequest = null;
+            if (crosspostRequestJson != null && !crosspostRequestJson.isBlank()) {
                 resolvedRequest = objectMapper.readValue(crosspostRequestJson, CrosspostRequest.class);
             }
 

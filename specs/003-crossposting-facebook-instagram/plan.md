@@ -3,7 +3,29 @@
 **Branch**: `003-crossposting-facebook-instagram`  
 **Duration**: 5 weeks  
 **Start Date**: February 1, 2026  
-**Target Release**: March 7, 2026
+**Target Release**: March 7, 2026  
+**Status**: 🚨 **BLOCKED - Critical Regression (Feb 14, 2026)**
+
+---
+
+## 🔴 CRITICAL BLOCKER - Service Outage
+
+**Date**: February 14, 2026  
+**Severity**: P0 - Production Down  
+**Impact**: Crossposting completely non-functional for multi-image announcements
+
+**Issue**: Method `postWithMultipleImages()` called but not implemented in `FacebookServiceImpl`  
+**Incident Report**: See [INCIDENT_2026-02-14.md](./INCIDENT_2026-02-14.md)
+
+**Immediate Action Required**:
+1. **Option A**: Rollback multi-image detection (5 min) - Restores single-image functionality
+2. **Option B**: Implement `postWithMultipleImages()` method (30-60 min) - Full fix
+3. **Recommended**: Deploy Option A immediately, then Option B as follow-up
+
+**Until Resolved**: 
+- ❌ Multi-image crossposting: Broken
+- ⚠️ Single-image crossposting: May work if fallback path is reached
+- ⚠️ Text-only crossposting: May work if fallback path is reached
 
 ---
 
@@ -20,6 +42,7 @@ Systematic implementation of crossposting feature with clear milestones, deliver
 - Implement secure credential storage
 - Configure OAuth integration
 - Create service layer skeleton
+- Align Meta App Review use cases and testing requirements
 
 ### Tasks
 
@@ -58,15 +81,40 @@ Systematic implementation of crossposting feature with clear milestones, deliver
   - Create Instagram business account connection
   - Get App ID and App Secret
 
+- [ ] Configure App Settings → Advanced (Meta Dashboard)
+  - Authorize callback URL: http://localhost:8080/api/auth/oauth/callback (dev)
+  - Use deployed callback URL for production
+
 - [ ] Configure Spring OAuth2
   - Add Facebook/Instagram client registration to `application.properties`
   - Set up OAuth2 redirect URI: `/api/auth/callback/{platform}`
   - Create OAuth controller
 
+- [ ] Set environment variables for Instagram
+  - instagram.client-id
+  - instagram.client-secret
+  - app.oauth.redirect-uri
+  - encryption.key
+
 - [ ] Implement OAuth flow
   - Login with Facebook button
   - Login with Instagram button
   - Handle callback and token storage
+
+#### 1.5 Meta App Review Use Cases (NEW)
+- [ ] Configure use cases in Meta App Dashboard
+  - Use case: "Manage everything on your Page" (Pages API)
+  - Use case: "Manage messaging & content on Instagram" (Instagram Graph API)
+- [ ] Request required permissions for Pages use case
+  - pages_manage_posts
+  - pages_read_engagement
+  - pages_show_list
+- [ ] If Instagram is in scope, request required permissions
+  - instagram_basic
+  - instagram_content_publish
+  - pages_show_list (required to fetch IG business accounts linked to a Page)
+- [ ] Confirm business verification status (required for pages_manage_posts)
+- [ ] Capture screenshots of use case selections for App Review submission
 
 #### 1.4 Service Layer Skeleton
 - [ ] Create `FacebookService` interface
@@ -101,6 +149,10 @@ Systematic implementation of crossposting feature with clear milestones, deliver
 - [ ] Credentials can be encrypted/decrypted
 - [ ] OAuth flow redirects to external platform
 - [ ] Services compile without errors
+- [ ] Graph API Explorer tests completed for Pages use case
+  - GET /me/accounts returns managed Pages
+  - POST /{page_id}/feed succeeds with test post
+  - GET /me/permissions includes pages_manage_posts, pages_read_engagement, pages_show_list
 
 ---
 
