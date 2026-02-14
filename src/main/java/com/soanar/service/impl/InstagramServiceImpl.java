@@ -45,8 +45,18 @@ public class InstagramServiceImpl implements InstagramService {
     }
 
     @Override
-    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception {
+    public String postAnnouncement(Announcement announcement, String caption, List<MultipartFile> images, UUID organizationId) throws Exception {
         logger.info("Posting announcement {} to Instagram", announcement.getId());
+
+        MultipartFile image = null;
+        if (images != null) {
+            for (MultipartFile candidate : images) {
+                if (candidate != null && !candidate.isEmpty()) {
+                    image = candidate;
+                    break;
+                }
+            }
+        }
 
         // Instagram requires an image
         if (image == null || image.isEmpty()) {

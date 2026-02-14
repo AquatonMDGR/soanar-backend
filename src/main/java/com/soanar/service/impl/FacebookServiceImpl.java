@@ -51,7 +51,7 @@ public class FacebookServiceImpl implements FacebookService {
     }
 
     @Override
-    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception {
+    public String postAnnouncement(Announcement announcement, String caption, List<MultipartFile> images, UUID organizationId) throws Exception {
         logger.info("Posting announcement {} to Facebook", announcement.getId());
 
         UUID orgId = organizationId;
@@ -78,6 +78,22 @@ public class FacebookServiceImpl implements FacebookService {
 
             // ALWAYS check imageUrls first (like NotificationService email pattern)
             List<String> storedImageUrls = announcement.getImageUrls();
+            if (storedImageUrls != null && storedImageUrls.size() > 10) {
+                logger.warn("Announcement has {} stored images; only the first 10 will be posted to Facebook", storedImageUrls.size());
+                storedImageUrls = storedImageUrls.subList(0, 10);
+            }
+            List<MultipartFile> uploadImages = new ArrayList<>();
+            if (images != null) {
+                for (MultipartFile file : images) {
+                    if (file != null && !file.isEmpty()) {
+                        uploadImages.add(file);
+                    }
+                }
+            }
+            if (uploadImages.size() > 10) {
+                logger.warn("Received {} uploaded images for Facebook; only the first 10 will be posted", uploadImages.size());
+                uploadImages = uploadImages.subList(0, 10);
+            }
 
             if (storedImageUrls != null && storedImageUrls.size() > 1) {
                 // Multiple images from database storage - create album post
@@ -94,13 +110,18 @@ public class FacebookServiceImpl implements FacebookService {
                 logger.info("Posting Facebook announcement with legacy imageUrl");
                 postId = postWithImageUrl(pageId, token.get(), postCaption, announcement.getImageUrl());
             }
-            else if (image != null && !image.isEmpty()) {
-                // Single image from uploaded file (crosspost endpoint)
-                logger.info("Posting Facebook announcement with uploaded image file");
-                imageService.validateImage(image);
-                byte[] imageData = image.getBytes();
-                byte[] resizedImage = imageService.resizeForFacebook(imageData);
-                postId = uploadAndPostImage(pageId, token.get(), postCaption, resizedImage);
+            else if (!uploadImages.isEmpty()) {
+                if (uploadImages.size() > 1) {
+                    logger.info("Posting Facebook announcement with {} uploaded images (album)", uploadImages.size());
+                    postId = postWithMultipleUploads(pageId, token.get(), postCaption, uploadImages);
+                } else {
+                    MultipartFile image = uploadImages.get(0);
+                    logger.info("Posting Facebook announcement with uploaded image file");
+                    imageService.validateImage(image);
+                    byte[] imageData = image.getBytes();
+                    byte[] resizedImage = imageService.resizeForFacebook(imageData);
+                    postId = uploadAndPostImage(pageId, token.get(), postCaption, resizedImage);
+                }
             }
             else {
                 // Text-only post
@@ -442,6 +463,43 @@ public class FacebookServiceImpl implements FacebookService {
         } catch (Exception e) {
             logger.error("Multi-image post failed: {}", e.getMessage(), e);
             throw new Exception("Multi-image post failed: " + e.getMessage(), e);
+        }
+    }
+
+    private String postWithMultipleUploads(String pageId, String token, String message, List<MultipartFile> images) throws Exception {
+        logger.info("===== MULTI-IMAGE UPLOAD FLOW: {} images =====", images.size());
+
+        List<String> photoIds = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < images.size(); i++) {
+                MultipartFile image = images.get(i);
+                logger.info("Processing upload {}/{}: {}", i + 1, images.size(), image.getOriginalFilename());
+
+                try {
+                    imageService.validateImage(image);
+                    byte[] imageData = image.getBytes();
+                    byte[] resizedData = imageService.resizeForFacebook(imageData);
+                    String photoId = uploadUnpublishedPhoto(pageId, token, resizedData);
+                    photoIds.add(photoId);
+                    logger.info("Uploaded photo {}/{}, photo_id: {}", i + 1, images.size(), photoId);
+                } catch (Exception e) {
+                    logger.error("Error processing upload {}: {}", image.getOriginalFilename(), e.getMessage());
+                    throw new Exception("Failed to process upload " + (i + 1) + ": " + e.getMessage(), e);
+                }
+            }
+
+            if (photoIds.isEmpty()) {
+                throw new Exception("No photos were successfully uploaded");
+            }
+
+            logger.info("All {} uploaded photos ready, creating feed post with attached_media", photoIds.size());
+            String postId = createFeedPostWithPhotos(pageId, token, message, photoIds);
+            logger.info("===== MULTI-IMAGE UPLOAD COMPLETE: post_id={} with {} photos =====", postId, photoIds.size());
+            return postId;
+        } catch (Exception e) {
+            logger.error("Multi-image upload failed: {}", e.getMessage(), e);
+            throw new Exception("Multi-image upload failed: " + e.getMessage(), e);
         }
     }
 

@@ -19,13 +19,13 @@ public interface CrosspostService {
      * @param announcement The announcement to post
      * @param request Contains platform selection and custom captions
      */
-    void crosspostAnnouncement(Announcement announcement, CrosspostRequest request, MultipartFile image, UUID organizationId) throws Exception;
+    void crosspostAnnouncement(Announcement announcement, CrosspostRequest request, List<MultipartFile> images, UUID organizationId) throws Exception;
 
     /**
      * Post announcement immediately to a specific platform
      */
     SocialMediaPost postToPlatform(Announcement announcement, String caption,
-                                   MultipartFile image, String platform, UUID organizationId) throws Exception;
+                                   List<MultipartFile> images, String platform, UUID organizationId) throws Exception;
 
     /**
      * Sync engagement metrics from all platforms for a specific announcement

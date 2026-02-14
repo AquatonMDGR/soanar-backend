@@ -3,6 +3,7 @@ package com.soanar.service;
 import com.soanar.model.Announcement;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -15,10 +16,10 @@ public interface InstagramService {
      * Post announcement to Instagram
      * @param announcement The announcement to post
      * @param caption Custom caption with hashtags for Instagram
-     * @param image Optional image to attach (will be resized if provided)
+    * @param images Optional images to attach (first image used when required)
      * @return Platform-specific post ID
      */
-    String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception;
+    String postAnnouncement(Announcement announcement, String caption, List<MultipartFile> images, UUID organizationId) throws Exception;
 
     /**
      * Delete a post from Instagram
