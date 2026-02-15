@@ -27,7 +27,7 @@ import java.util.*;
 public class InstagramServiceImpl implements InstagramService {
 
     private static final Logger logger = LoggerFactory.getLogger(InstagramServiceImpl.class);
-    private static final String INSTAGRAM_API_URL = "https://graph.instagram.com/v18.0";
+    private static final String INSTAGRAM_API_URL = "https://graph.facebook.com/v19.0";
 
     @Value("${instagram.api-key:}")
     private String instagramApiKey;
@@ -45,8 +45,18 @@ public class InstagramServiceImpl implements InstagramService {
     }
 
     @Override
-    public String postAnnouncement(Announcement announcement, String caption, MultipartFile image, UUID organizationId) throws Exception {
+    public String postAnnouncement(Announcement announcement, String caption, List<MultipartFile> images, UUID organizationId) throws Exception {
         logger.info("Posting announcement {} to Instagram", announcement.getId());
+
+        MultipartFile image = null;
+        if (images != null) {
+            for (MultipartFile candidate : images) {
+                if (candidate != null && !candidate.isEmpty()) {
+                    image = candidate;
+                    break;
+                }
+            }
+        }
 
         // Instagram requires an image
         if (image == null || image.isEmpty()) {
@@ -60,25 +70,29 @@ public class InstagramServiceImpl implements InstagramService {
             throw new IllegalStateException("Instagram credentials not configured");
         }
 
-        Optional<SocialMediaCredential> cred = credentialService.getCredential(orgId, SocialMediaCredential.Platform.INSTAGRAM);
-        String accountId = cred.map(SocialMediaCredential::getPageId).orElse("");
-        
-        if (accountId.isEmpty()) {
+        Optional<String> accountIdOpt = credentialService.getDecryptedPageId(orgId, SocialMediaCredential.Platform.INSTAGRAM);
+        if (accountIdOpt.isEmpty()) {
             throw new IllegalStateException("Instagram account ID not configured");
         }
+        
+        String accountId = accountIdOpt.get();
 
         // Prepare caption
         String postCaption = caption != null && !caption.isEmpty() ? caption : buildDefaultCaption(announcement);
 
         try {
-            imageService.validateImage(image);
-            byte[] imageData = image.getBytes();
-            byte[] resizedImage = imageService.resizeForInstagram(imageData);
+            String imageUrl = announcement.getImageUrl();
+            if (imageUrl == null || imageUrl.isBlank()) {
+                if (image != null && !image.isEmpty()) {
+                    imageService.validateImage(image);
+                }
+                throw new IllegalArgumentException("Instagram requires a public image URL. Upload the announcement image first.");
+            }
 
             // Two-step process for Instagram:
             // Step 1: Create media container with image URL
             // Step 2: Publish the media
-            String mediaId = createAndPublishMediaContainer(accountId, token.get(), postCaption, resizedImage);
+            String mediaId = createAndPublishMediaContainer(accountId, token.get(), postCaption, imageUrl);
 
             logger.info("Successfully posted to Instagram: {}", mediaId);
             return mediaId;
@@ -89,13 +103,13 @@ public class InstagramServiceImpl implements InstagramService {
         }
     }
 
-    private String createAndPublishMediaContainer(String accountId, String token, String caption, byte[] imageData) throws Exception {
+    private String createAndPublishMediaContainer(String accountId, String token, String caption, String imageUrl) throws Exception {
         try {
             // Step 1: Create media container (draft)
             String mediaUrl = String.format("%s/%s/media", INSTAGRAM_API_URL, accountId);
             
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("image_url", uploadImageAndGetUrl(imageData));
+            body.add("image_url", imageUrl);
             body.add("caption", caption);
             body.add("access_token", token);
 

@@ -45,15 +45,15 @@ public class CrosspostServiceImpl implements CrosspostService {
 
     @Override
     @Async
-    public void crosspostAnnouncement(Announcement announcement, CrosspostRequest request, MultipartFile image, UUID organizationId) throws Exception {
+    public void crosspostAnnouncement(Announcement announcement, CrosspostRequest request, List<MultipartFile> images, UUID organizationId) throws Exception {
         logger.info("Starting crosspost for announcement: {}", announcement.getId());
 
         if (request.getFacebook() != null && request.getFacebook().getEnabled()) {
-            postToPlatform(announcement, request.getFacebook().getCaption(), image, "facebook", organizationId);
+            postToPlatform(announcement, request.getFacebook().getCaption(), images, "facebook", organizationId);
         }
 
         if (request.getInstagram() != null && request.getInstagram().getEnabled()) {
-            postToPlatform(announcement, request.getInstagram().getCaption(), image, "instagram", organizationId);
+            postToPlatform(announcement, request.getInstagram().getCaption(), images, "instagram", organizationId);
         }
 
         logger.info("Crosspost completed for announcement: {}", announcement.getId());
@@ -61,7 +61,7 @@ public class CrosspostServiceImpl implements CrosspostService {
 
     @Override
     public SocialMediaPost postToPlatform(Announcement announcement, String caption,
-                                         MultipartFile image, String platform, UUID organizationId) throws Exception {
+                                         List<MultipartFile> images, String platform, UUID organizationId) throws Exception {
         logger.info("Posting to {}: {}", platform, announcement.getId());
 
         SocialMediaCredential.Platform platformEnum = SocialMediaCredential.Platform.valueOf(platform.toUpperCase());
@@ -78,11 +78,11 @@ public class CrosspostServiceImpl implements CrosspostService {
             String postId;
             if (platformEnum == SocialMediaCredential.Platform.FACEBOOK) {
                 postId = retryService.executeWithRetry(() ->
-                        facebookService.postAnnouncement(announcement, caption, image, organizationId)
+                        facebookService.postAnnouncement(announcement, caption, images, organizationId)
                 );
             } else {
                 postId = retryService.executeWithRetry(() ->
-                        instagramService.postAnnouncement(announcement, caption, image, organizationId)
+                        instagramService.postAnnouncement(announcement, caption, images, organizationId)
                 );
             }
 
@@ -153,9 +153,9 @@ public class CrosspostServiceImpl implements CrosspostService {
                 UUID orgId = resolveOrganizationId(post.getAnnouncement());
                 String postId;
                 if (post.getPlatform() == SocialMediaCredential.Platform.FACEBOOK) {
-                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
+                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), Collections.emptyList(), orgId);
                 } else {
-                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
+                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), Collections.emptyList(), orgId);
                 }
 
                 post.setPostId(postId);
@@ -194,9 +194,9 @@ public class CrosspostServiceImpl implements CrosspostService {
                 UUID orgId = resolveOrganizationId(post.getAnnouncement());
                 String postId;
                 if (post.getPlatform() == SocialMediaCredential.Platform.FACEBOOK) {
-                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
+                    postId = facebookService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), Collections.emptyList(), orgId);
                 } else {
-                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), null, orgId);
+                    postId = instagramService.postAnnouncement(post.getAnnouncement(), post.getCustomCaption(), Collections.emptyList(), orgId);
                 }
 
                 post.setPostId(postId);

@@ -3,6 +3,8 @@ package com.soanar.model;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Type;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -13,6 +15,7 @@ import java.util.Set;
 
 @Entity
 @Table(name = "announcements")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Announcement {
 
     @Id
@@ -52,7 +55,8 @@ public class Announcement {
 
     @Column(name = "end_date")
     private LocalDate endDate;
-    
+
+    @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "announcement_distribution_groups",
@@ -104,8 +108,10 @@ public class Announcement {
 
     public LocalDate getEndDate() { return endDate; }
     public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
-    
+
     public Set<DistributionGroup> getDistributionGroups() { return distributionGroups; }
-    public void setDistributionGroups(Set<DistributionGroup> distributionGroups) { this.distributionGroups = distributionGroups; }
+    public void setDistributionGroups(Set<DistributionGroup> distributionGroups) {
+        this.distributionGroups = distributionGroups != null ? distributionGroups : new HashSet<>();
+    }
 }
 

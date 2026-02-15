@@ -26,6 +26,11 @@ public interface CredentialService {
     Optional<String> getDecryptedToken(UUID organizationId, SocialMediaCredential.Platform platform);
 
     /**
+     * Get decrypted page ID for API calls
+     */
+    Optional<String> getDecryptedPageId(UUID organizationId, SocialMediaCredential.Platform platform);
+
+    /**
      * Refresh expired token
      */
     void refreshToken(UUID organizationId, SocialMediaCredential.Platform platform, String newToken, long expirationSeconds);

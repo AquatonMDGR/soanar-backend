@@ -106,6 +106,28 @@ public class CredentialServiceImpl implements CredentialService {
     }
 
     @Override
+    public Optional<String> getDecryptedPageId(UUID organizationId,
+                                              SocialMediaCredential.Platform platform) {
+        logger.debug("Fetching decrypted page ID for {} on {}", organizationId, platform);
+
+        Optional<SocialMediaCredential> credential = getCredential(organizationId, platform);
+        if (credential.isEmpty()) {
+            logger.warn("No credential found for {}", platform);
+            return Optional.empty();
+        }
+
+        SocialMediaCredential cred = credential.get();
+
+        try {
+            String decrypted = encryptionService.decrypt(cred.getPageId());
+            return Optional.of(decrypted);
+        } catch (Exception e) {
+            logger.error("Failed to decrypt page ID for {}", platform, e);
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public void refreshToken(UUID organizationId,
                             SocialMediaCredential.Platform platform,
                             String newToken,

@@ -9,10 +9,12 @@ import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -199,13 +201,13 @@ public class AnnouncementController {
      * Crosspost an announcement to Facebook and/or Instagram
      * POST /api/announcements/{id}/crosspost
      */
-    @PostMapping("/{id}/crosspost")
+    @PostMapping(value = "/{id}/crosspost", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> crosspost(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long id,
-            @RequestParam(value = "file", required = false) MultipartFile file,
-            @RequestPart(value = "crosspostRequest", required = false) String crosspostRequestJson,
-            @RequestBody(required = false) CrosspostRequest request) {
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestPart(value = "files", required = false) List<MultipartFile> files,
+            @RequestPart(value = "crosspostRequest", required = false) String crosspostRequestJson) {
 
         try {
             String token = authHeader.replace("Bearer ", "");
@@ -224,8 +226,8 @@ public class AnnouncementController {
                 return ResponseEntity.status(403).body(Map.of("error", "Not authorized to crosspost"));
             }
 
-            CrosspostRequest resolvedRequest = request;
-            if (resolvedRequest == null && crosspostRequestJson != null && !crosspostRequestJson.isBlank()) {
+            CrosspostRequest resolvedRequest = null;
+            if (crosspostRequestJson != null && !crosspostRequestJson.isBlank()) {
                 resolvedRequest = objectMapper.readValue(crosspostRequestJson, CrosspostRequest.class);
             }
 
@@ -233,9 +235,21 @@ public class AnnouncementController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing crosspost request"));
             }
 
+            List<MultipartFile> images = new ArrayList<>();
+            if (files != null) {
+                for (MultipartFile image : files) {
+                    if (image != null && !image.isEmpty()) {
+                        images.add(image);
+                    }
+                }
+            }
+            if (file != null && !file.isEmpty()) {
+                images.add(file);
+            }
+
             // Crosspost to selected platforms (user-scoped)
             UUID organizationId = UUID.nameUUIDFromBytes(email.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
-            crosspostService.crosspostAnnouncement(announcement, resolvedRequest, file, organizationId);
+            crosspostService.crosspostAnnouncement(announcement, resolvedRequest, images, organizationId);
 
             return ResponseEntity.ok(Map.of(
                     "message", "Crossposting initiated",

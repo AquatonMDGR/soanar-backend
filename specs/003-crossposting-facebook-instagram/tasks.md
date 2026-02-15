@@ -1,8 +1,105 @@
 # Tasks: Crossposting to Facebook and Instagram
 
 **Branch**: `003-crossposting-facebook-instagram`  
-**Status**: Not Started  
-**Assignee**: TBD
+**Status**: In Progress (Phase 2 - Core Posting)  
+**Assignee**: TBD  
+**Last Updated**: February 14, 2026
+
+---
+
+## Current Implementation Status
+
+### 🚨 CRITICAL REGRESSION - CROSSPOSTING BROKEN
+
+**Issue**: Crossposting feature has completely stopped functioning - no posts are being made to Facebook/Instagram.
+
+**Root Cause**: 
+- Added multi-image detection logic to `FacebookServiceImpl.postAnnouncement()` (line 78)
+- Code calls `postWithMultipleImages(pageId, token, postCaption, imageUrls)` method
+- **Method does NOT exist** - it was stubbed but never implemented
+- When announcement has multiple images in `imageUrls` array, execution hits the unimplemented method and fails
+- This blocks ALL crossposting for announcements with 2+ images
+
+**Impact**: 
+- ❌ Announcements with multiple images cannot be crossposted at all
+- ❌ Single image posts may still work (if they bypass multi-image check)
+- ❌ Text-only posts may still work (if they have no images)
+- **Severity**: P0 - Feature completely broken for multi-image announcements
+
+**Fix Required**:
+1. **Option A (Quick Fix)**: Remove/comment out the multi-image check to restore single-image functionality
+2. **Option B (Complete Fix)**: Implement `postWithMultipleImages()` method following Facebook album pattern:
+   ```java
+   private String postWithMultipleImages(String pageId, String token, String message, List<String> imageUrls) {
+       // 1. Upload each image to /{page}/photos?published=false
+       // 2. Collect photo IDs from responses
+       // 3. POST to /{page}/feed with attached_media array
+   }
+   ```
+
+**Timeline**: Immediate action required to restore service
+
+---
+
+### ✅ Previously Completed
+- **Database Schema**: `social_media_credentials` and `social_media_posts` tables exist
+- **Credential Encryption**: AES-128 encryption for page_id and access_token implemented
+  - `CredentialService.getDecryptedToken()` - retrieves and decrypts access tokens
+  - `CredentialService.getDecryptedPageId()` - retrieves and decrypts page IDs
+- **Image Processing**: `ImageService.resizeForFacebook()` and `resizeForInstagram()` implemented
+- **Facebook Single Image Posts**: Working
+  - `FacebookServiceImpl.postAnnouncement()` - posts text with optional single image
+  - `FacebookServiceImpl.uploadAndPostImage()` - uploads binary image to `/{page}/photos` endpoint
+  - `FacebookServiceImpl.postWithImageUrl()` - downloads and uploads image from stored URL
+  - `FacebookServiceImpl.postTextOnly()` - posts text-only to `/{page}/feed`
+- **Instagram Service**: Basic implementation complete
+  - Two-step media container pattern: create → publish
+  - Uses `getDecryptedPageId()` for account ID decryption
+- **Crosspost Controller**: `AnnouncementController.crosspost()` endpoint working
+  - Fixed multipart form data handling (was 415 error)
+  - Properly uses `@RequestPart` for file and JSON parameters
+- **Fixed Issues**:
+  - ✅ Encrypted page_id being used directly in API URLs (added decryption)
+  - ✅ 415 Unsupported Media Type (fixed multipart annotations)
+  - ✅ 400 Bad Request "source should represent a valid URL" (switched from `/feed` to `/photos` endpoint)
+
+### 🟡 In Progress
+- **Facebook Multi-Image Posts (Albums/Carousels)**:
+  - Detection logic implemented: checks `announcement.getImageUrls().size() > 1`
+  - `postWithMultipleImages()` method stubbed but NOT YET IMPLEMENTED
+  - **Next Step**: Implement upload pattern:
+    1. Upload each image to `/{page}/photos?published=false`
+    2. Collect photo IDs from responses
+    3. POST to `/{page}/feed` with `attached_media=[{media_fbid: "123"}, ...]`
+
+### ❌ Pending
+- Instagram multi-image carousel support
+- Scheduled posting (cron jobs)
+- Engagement metrics sync
+- Post deletion sync
+- OAuth UI integration
+- Admin panel for credential management
+
+### Announcement Data Model
+The `announcements` table supports both single and multiple images:
+- **`image_url`** (String/varchar): Primary/first image URL - legacy support, backwards compatible
+- **`image_urls`** (jsonb): Array of image URLs for multi-image posts
+  - PostgreSQL jsonb type, default: `'[]'::jsonb`
+  - Example: `["https://storage.url/img1.jpg", "https://storage.url/img2.jpg"]`
+  - Java model: `List<String> imageUrls` with null-safe getter returning empty list
+  - Used for Facebook albums and Instagram carousels
+
+**Posting Priority Logic**:
+1. Check `imageUrls` list size:
+   - If > 1: Call `postWithMultipleImages()` (currently being implemented)
+   - If == 1: Call `postWithImageUrl()` or `uploadAndPostImage()`
+2. Fallback to `imageUrl` (singular) if `imageUrls` is empty/null
+3. Fallback to MultipartFile if provided in request
+4. Final fallback: text-only post
+
+### Known Issues
+- ⚠️ Backend has DB connection warnings (non-blocking, functional for API calls)
+- ⚠️ Multi-image posts currently only post first image (fix in progress)
 
 ---
 

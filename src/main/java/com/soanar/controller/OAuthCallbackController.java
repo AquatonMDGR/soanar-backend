@@ -108,6 +108,13 @@ public class OAuthCallbackController {
             String pageId = (String) tokenResponse.getOrDefault("page_id", "");
             Long expiresIn = parseExpiresIn(tokenResponse.get("expires_in"), 5184000L); // 60 days default
 
+            if ("facebook".equalsIgnoreCase(resolvedProvider) && (pageId == null || pageId.isBlank())) {
+                logger.warn("Facebook connect succeeded but no page ID found. Check Pages permissions and Page admin role.");
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Facebook Page not found. Ensure pages_show_list is granted and you manage at least one Page."
+                ));
+            }
+
             // Store credential
             SocialMediaCredential.Platform platformEnum = 
                     SocialMediaCredential.Platform.valueOf(resolvedProvider.toUpperCase());
@@ -147,11 +154,11 @@ public class OAuthCallbackController {
             String clientSecret;
 
             if ("facebook".equalsIgnoreCase(provider)) {
-                tokenUrl = "https://graph.facebook.com/v18.0/oauth/access_token";
+                tokenUrl = "https://graph.facebook.com/v19.0/oauth/access_token";
                 clientId = facebookClientId;
                 clientSecret = facebookClientSecret;
             } else if ("instagram".equalsIgnoreCase(provider)) {
-                tokenUrl = "https://graph.instagram.com/v18.0/oauth/access_token";
+                tokenUrl = "https://graph.facebook.com/v19.0/oauth/access_token";
                 clientId = instagramClientId;
                 clientSecret = instagramClientSecret;
             } else {
@@ -215,7 +222,10 @@ public class OAuthCallbackController {
     private Map<String, String> fetchFacebookPrimaryPage(String userAccessToken) {
         Map<String, String> result = new HashMap<>();
         try {
-            String url = String.format("https://graph.facebook.com/v18.0/me/accounts?access_token=%s", userAccessToken);
+                String url = String.format(
+                    "https://graph.facebook.com/v19.0/me/accounts?fields=id,access_token,name&access_token=%s",
+                    userAccessToken
+                );
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
 

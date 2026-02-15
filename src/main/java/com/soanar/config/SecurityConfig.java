@@ -46,7 +46,8 @@ public class SecurityConfig {
                     "/error",
                     "/api/login",
                     "/api/db/**",
-                    "/api/auth/oauth/**"
+                    "/api/auth/oauth/**",
+                    "/api/announcements"
                 ).permitAll()
                 .anyRequest().authenticated()
             )

@@ -1,9 +1,40 @@
 # Specification: Crossposting to Facebook and Instagram
 
 **Feature**: Announcement crossposting to social media  
-**Status**: Planned  
+**Status**: 🚨 **BROKEN - Critical Regression** (Previously: In Progress)  
 **Version**: 1.0.0  
-**Created**: January 31, 2026
+**Created**: January 31, 2026  
+**Last Updated**: February 14, 2026
+
+---
+
+## ⚠️ CRITICAL ISSUE - Service Currently Non-Functional
+
+**Date Reported**: February 14, 2026  
+**Status**: P0 - Blocking all multi-image crossposting
+
+**Problem**: 
+Crossposting feature has stopped working entirely. No new posts are being created on Facebook/Instagram when announcements contain multiple images.
+
+**Root Cause**:
+- `FacebookServiceImpl.postAnnouncement()` was modified to detect multiple images in `announcement.getImageUrls()`
+- When `imageUrls.size() > 1`, code calls `postWithMultipleImages()` method
+- **This method does not exist** - it was referenced but never implemented
+- Execution fails when trying to call non-existent method, blocking entire crosspost flow
+
+**Affected Scenarios**:
+- ❌ Announcements with 2+ images: **Cannot crosspost** (method missing)
+- ✅ Announcements with 1 image: **May work** (uses single-image path)
+- ✅ Text-only announcements: **May work** (uses text-only path)
+
+**Fix Options**:
+1. **Emergency Rollback**: Remove multi-image detection logic to restore single-image functionality
+2. **Complete Implementation**: Implement `postWithMultipleImages()` method per Facebook album API pattern
+
+**Code Location**: 
+- File: `src/main/java/com/soanar/service/impl/FacebookServiceImpl.java`
+- Line: 78 - calls non-existent `postWithMultipleImages()`
+- Missing: Method implementation (lines 200-373 end without this method)
 
 ---
 
@@ -128,6 +159,23 @@ Graph API    Graph API       (Scheduled)
 
 ### Database Schema
 
+**announcements** table (relevant fields for crossposting):
+- id (bigint, PK)
+- title (varchar)
+- description (text)
+- status (varchar: PENDING, APPROVED, REJECTED, PUBLISHED)
+- image_url (varchar) - Primary/first image URL (legacy, for backwards compatibility)
+- **image_urls (jsonb)** - Array of image URLs for multi-image support
+  - Stored as PostgreSQL jsonb type
+  - Default value: `'[]'::jsonb` (empty array)
+  - Example: `["https://storage.url/img1.jpg", "https://storage.url/img2.jpg"]`
+  - Used for Facebook albums/carousels and Instagram carousels
+  - Java model: `List<String> imageUrls`
+- published_at (timestamp)
+- start_date (date)
+- end_date (date)
+- attachments_json (text) - Additional file attachments
+
 **social_media_posts** table:
 - id (UUID)
 - announcement_id (FK)
@@ -161,11 +209,16 @@ Graph API    Graph API       (Scheduled)
 ### Create Announcement with Crossposting
 ```
 POST /api/announcements
-{
-  "title": "Campus Event",
-  "description": "...",
-  "image": <file>,
-  "crosspost": {
+Content-Type: multipart/form-data
+
+Form Data:
+  title: "Campus Event"
+  description: "Event details..."
+  image: <file> (optional, for single image)
+  images[]: <file1> (optional, for multiple images)
+  images[]: <file2>
+  images[]: <file3>
+  crosspost: {
     "facebook": {
       "enabled": true,
       "caption": "Join us on campus!"
@@ -176,7 +229,39 @@ POST /api/announcements
       "scheduledFor": "2026-02-01T10:00:00Z"
     }
   }
+
+Response:
+{
+  "id": 123,
+  "title": "Campus Event",
+  "imageUrl": "https://storage.url/primary.jpg",
+  "imageUrls": [
+    "https://storage.url/img1.jpg",
+    "https://storage.url/img2.jpg",
+    "https://storage.url/img3.jpg"
+  ],
+  "socialPosts": [
+    {
+      "platform": "FACEBOOK",
+      "status": "PENDING"
+    }
+  ]
 }
+```
+
+### Crosspost Existing Announcement
+```
+POST /api/announcements/{id}/crosspost
+Content-Type: multipart/form-data
+
+Form Data:
+  file: <optional file upload>
+  crosspostRequest: {
+    "platforms": ["FACEBOOK", "INSTAGRAM"],
+    "customCaption": "Optional custom message"
+  }
+
+Note: If file is not provided, uses existing announcement.imageUrls or announcement.imageUrl
 ```
 
 ### Get Announcement with Social Posts
@@ -221,6 +306,88 @@ GET /api/social-media/credentials
 DELETE /api/social-media/credentials/{platform}
   - Revoke access
 ```
+
+---
+
+## Multi-Image Support
+
+### Facebook Album/Carousel Posts
+When an announcement contains multiple images in the `image_urls` array:
+
+**Implementation Pattern:**
+1. Upload each image to `/{page-id}/photos` with `published=false` parameter
+2. Collect photo IDs from each upload response
+3. Create a feed post to `/{page-id}/feed` with:
+   - `message`: Post caption/description
+   - `attached_media`: JSON array of photo objects `[{media_fbid: "123"}, {media_fbid: "456"}]`
+   - `access_token`: Page access token
+
+**API Endpoints:**
+```
+POST /{page-id}/photos
+  ?published=false
+  &access_token={token}
+  
+Form Data:
+  source: <binary image data>
+  
+Response:
+  { "id": "photo_id_123" }
+
+POST /{page-id}/feed
+  ?message={caption}
+  &attached_media=[{"media_fbid":"photo_id_123"},{"media_fbid":"photo_id_456"}]
+  &access_token={token}
+  
+Response:
+  { "id": "post_id_789" }
+```
+
+**Service Logic:**
+- If `announcement.getImageUrls().size() > 1`: Use multi-image album flow
+- If `announcement.getImageUrls().size() == 1`: Post single photo to `/{page-id}/photos`
+- If `announcement.getImageUrl()` exists (legacy): Use single photo flow
+- If no images: Post text-only to `/{page-id}/feed`
+
+### Instagram Carousel Posts
+For Instagram multi-image posts (carousels):
+
+**Implementation Pattern:**
+1. Create media containers for each image via `/{instagram-account-id}/media`
+2. Upload carousel container referencing all media container IDs
+3. Publish the carousel container
+
+**API Endpoints:**
+```
+POST /{ig-user-id}/media
+  ?image_url={image1_url}
+  &is_carousel_item=true
+  &access_token={token}
+  
+Response:
+  { "id": "container_id_1" }
+
+POST /{ig-user-id}/media
+  ?media_type=CAROUSEL
+  &caption={caption}
+  &children={container_id_1},{container_id_2}
+  &access_token={token}
+  
+Response:
+  { "id": "carousel_container_id" }
+
+POST /{ig-user-id}/media_publish
+  ?creation_id={carousel_container_id}
+  &access_token={token}
+  
+Response:
+  { "id": "published_media_id" }
+```
+
+**Image Requirements:**
+- Facebook: Minimum 200x200px, recommended 1200x628px for optimal display
+- Instagram: Minimum 320x320px, recommended 1080x1080px (square) or 1080x1350px (portrait)
+- All images resized and compressed by `ImageService` before upload
 
 ---
 
