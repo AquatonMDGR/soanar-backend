@@ -41,6 +41,16 @@ public class Announcement {
     @Column(name = "published_at")
     private Instant publishedAt;
 
+    @ManyToOne
+    @JoinColumn(name = "approved_by")
+    private User approvedBy;
+
+    @Column(name = "approved_at")
+    private Instant approvedAt;
+
+    @Column(name = "approval_notes", columnDefinition = "TEXT")
+    private String approvalNotes;
+
     @Column(name = "image_url")
     @JsonProperty("imageUrl")
     private String imageUrl;
@@ -113,5 +123,14 @@ public class Announcement {
     public void setDistributionGroups(Set<DistributionGroup> distributionGroups) {
         this.distributionGroups = distributionGroups != null ? distributionGroups : new HashSet<>();
     }
+
+    public User getApprovedBy() { return approvedBy; }
+    public void setApprovedBy(User approvedBy) { this.approvedBy = approvedBy; }
+
+    public Instant getApprovedAt() { return approvedAt; }
+    public void setApprovedAt(Instant approvedAt) { this.approvedAt = approvedAt; }
+
+    public String getApprovalNotes() { return approvalNotes; }
+    public void setApprovalNotes(String approvalNotes) { this.approvalNotes = approvalNotes; }
 }
 

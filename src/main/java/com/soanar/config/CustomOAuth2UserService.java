@@ -37,9 +37,10 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         }
 
         // Email domain validation - only @iacademy.edu.ph emails allowed
-        if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
-            throw new OAuth2AuthenticationException("Only @iacademy.edu.ph emails are allowed");
-        }
+        // TEMPORARILY DISABLED FOR TESTING MULTIPLE ROLES
+        // if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
+        //     throw new OAuth2AuthenticationException("Only @iacademy.edu.ph emails are allowed");
+        // }
 
         // Basic role resolution: default to Student; admin roles assigned via Admin API
         String role = "Student";

@@ -106,10 +106,10 @@ public class CrosspostServiceImpl implements CrosspostService {
     }
 
     @Override
-    public void syncEngagementMetrics(UUID announcementId) throws Exception {
+    public void syncEngagementMetrics(Long announcementId) throws Exception {
         logger.info("Syncing engagement metrics for announcement: {}", announcementId);
 
-        List<SocialMediaPost> posts = postRepository.findByAnnouncementId(announcementId.getMostSignificantBits());
+        List<SocialMediaPost> posts = postRepository.findByAnnouncementId(announcementId);
 
         for (SocialMediaPost post : posts) {
             try {
@@ -216,10 +216,10 @@ public class CrosspostServiceImpl implements CrosspostService {
     }
 
     @Override
-    public void deleteFromAllPlatforms(UUID announcementId) throws Exception {
+    public void deleteFromAllPlatforms(Long announcementId) throws Exception {
         logger.info("Deleting announcement from all platforms: {}", announcementId);
 
-        List<SocialMediaPost> posts = postRepository.findByAnnouncementId(announcementId.getMostSignificantBits());
+        List<SocialMediaPost> posts = postRepository.findByAnnouncementId(announcementId);
 
         for (SocialMediaPost post : posts) {
             try {

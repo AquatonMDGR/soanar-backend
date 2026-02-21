@@ -30,7 +30,7 @@ public interface CrosspostService {
     /**
      * Sync engagement metrics from all platforms for a specific announcement
      */
-    void syncEngagementMetrics(UUID announcementId) throws Exception;
+    void syncEngagementMetrics(Long announcementId) throws Exception;
 
     /**
      * Execute all scheduled posts that are due
@@ -47,7 +47,7 @@ public interface CrosspostService {
      * Delete announcement from all platforms
      * Called when announcement is deleted from SONAR
      */
-    void deleteFromAllPlatforms(UUID announcementId) throws Exception;
+    void deleteFromAllPlatforms(Long announcementId) throws Exception;
 
     /**
      * Get all social media posts for an announcement

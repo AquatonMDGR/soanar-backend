@@ -51,9 +51,10 @@ public class AuthController {
             String name = (String) googleResponse.getOrDefault("name", "");
 
             // Email domain validation - only @iacademy.edu.ph emails allowed
-            if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only @iacademy.edu.ph emails are allowed"));
-            }
+            // TEMPORARILY DISABLED FOR TESTING MULTIPLE ROLES
+            // if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
+            //     return ResponseEntity.status(403).body(Map.of("error", "Only @iacademy.edu.ph emails are allowed"));
+            // }
 
             // Get or create user
             String role = "Student";

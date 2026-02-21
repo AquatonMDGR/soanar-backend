@@ -32,6 +32,24 @@ public class InstagramServiceImpl implements InstagramService {
     @Value("${instagram.api-key:}")
     private String instagramApiKey;
 
+    @Value("${media.public-base-url:}")
+    private String mediaPublicBaseUrl;
+
+    @Value("${media.origin-base-url:}")
+    private String mediaOriginBaseUrl;
+
+    @Value("${media.use-signed-urls:false}")
+    private boolean mediaUseSignedUrls;
+
+    @Value("${media.signed-url-ttl-seconds:600}")
+    private long mediaSignedUrlTtlSeconds;
+
+    @Value("${supabase.url:}")
+    private String supabaseUrl;
+
+    @Value("${supabase.service-role-key:}")
+    private String supabaseKey;
+
     private final CredentialService credentialService;
     private final ImageService imageService;
     private final RestTemplate restTemplate;
@@ -48,20 +66,26 @@ public class InstagramServiceImpl implements InstagramService {
     public String postAnnouncement(Announcement announcement, String caption, List<MultipartFile> images, UUID organizationId) throws Exception {
         logger.info("Posting announcement {} to Instagram", announcement.getId());
 
-        MultipartFile image = null;
-        if (images != null) {
-            for (MultipartFile candidate : images) {
-                if (candidate != null && !candidate.isEmpty()) {
-                    image = candidate;
-                    break;
-                }
-            }
+        List<String> imageUrls = new ArrayList<>();
+        if (announcement.getImageUrls() != null) {
+            imageUrls.addAll(announcement.getImageUrls());
+        }
+        if (imageUrls.isEmpty() && announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
+            imageUrls.add(announcement.getImageUrl());
+        }
+        if (imageUrls.size() > 10) {
+            logger.warn("Announcement has {} images; only the first 10 will be posted to Instagram", imageUrls.size());
+            imageUrls = imageUrls.subList(0, 10);
         }
 
-        // Instagram requires an image
-        if (image == null || image.isEmpty()) {
-            throw new IllegalArgumentException("Instagram requires an image to post");
+        if (imageUrls.isEmpty()) {
+            if (images != null && images.stream().anyMatch(img -> img != null && !img.isEmpty())) {
+                logger.warn("Instagram posting requested with uploaded files, but no public image URLs are stored");
+            }
+            throw new IllegalArgumentException("Instagram requires public image URLs. Upload the announcement images first.");
         }
+
+        imageUrls = normalizeImageUrls(imageUrls);
 
         UUID orgId = organizationId;
         Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
@@ -76,23 +100,22 @@ public class InstagramServiceImpl implements InstagramService {
         }
         
         String accountId = accountIdOpt.get();
+        if (accountId == null || accountId.isBlank()) {
+            logger.error("Instagram account ID is empty or null. Instagram Business Account was not properly retrieved during OAuth.");
+            throw new IllegalStateException("Instagram account ID is empty. Ensure your Instagram Business Account is connected to your Facebook account and try reconnecting.");
+        }
 
         // Prepare caption
         String postCaption = caption != null && !caption.isEmpty() ? caption : buildDefaultCaption(announcement);
 
         try {
-            String imageUrl = announcement.getImageUrl();
-            if (imageUrl == null || imageUrl.isBlank()) {
-                if (image != null && !image.isEmpty()) {
-                    imageService.validateImage(image);
-                }
-                throw new IllegalArgumentException("Instagram requires a public image URL. Upload the announcement image first.");
+            String mediaId;
+            if (imageUrls.size() > 1) {
+                mediaId = createAndPublishCarouselContainer(accountId, token.get(), postCaption, imageUrls);
+            } else {
+                String imageUrl = imageUrls.get(0);
+                mediaId = createAndPublishMediaContainer(accountId, token.get(), postCaption, imageUrl);
             }
-
-            // Two-step process for Instagram:
-            // Step 1: Create media container with image URL
-            // Step 2: Publish the media
-            String mediaId = createAndPublishMediaContainer(accountId, token.get(), postCaption, imageUrl);
 
             logger.info("Successfully posted to Instagram: {}", mediaId);
             return mediaId;
@@ -162,6 +185,98 @@ public class InstagramServiceImpl implements InstagramService {
 
         } catch (Exception e) {
             logger.error("Failed to create/publish Instagram media", e);
+            throw e;
+        }
+    }
+
+    private String createAndPublishCarouselContainer(String accountId, String token, String caption, List<String> imageUrls) throws Exception {
+        try {
+            String mediaUrl = String.format("%s/%s/media", INSTAGRAM_API_URL, accountId);
+            List<String> creationIds = new ArrayList<>();
+
+            for (int i = 0; i < imageUrls.size(); i++) {
+                String imageUrl = imageUrls.get(i);
+                MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+                body.add("image_url", imageUrl);
+                body.add("is_carousel_item", "true");
+                body.add("access_token", token);
+
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+                HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+                logger.info("Creating carousel item {}/{}", i + 1, imageUrls.size());
+                ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    mediaUrl,
+                    HttpMethod.POST,
+                    request,
+                    new ParameterizedTypeReference<Map<String, Object>>() {}
+                );
+
+                if (!response.getStatusCode().is2xxSuccessful()) {
+                    throw new RuntimeException("Instagram API error creating carousel item: " + response.getStatusCode());
+                }
+
+                Map<String, Object> responseBody = response.getBody();
+                String creationId = responseBody != null ? (String) responseBody.get("id") : null;
+                if (creationId == null) {
+                    throw new RuntimeException("No creation ID returned for carousel item");
+                }
+                creationIds.add(creationId);
+            }
+
+            String children = String.join(",", creationIds);
+            MultiValueMap<String, Object> carouselBody = new LinkedMultiValueMap<>();
+            carouselBody.add("media_type", "CAROUSEL");
+            carouselBody.add("children", children);
+            carouselBody.add("caption", caption);
+            carouselBody.add("access_token", token);
+
+            HttpHeaders carouselHeaders = new HttpHeaders();
+            carouselHeaders.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            HttpEntity<MultiValueMap<String, Object>> carouselRequest = new HttpEntity<>(carouselBody, carouselHeaders);
+            logger.info("Creating carousel container with {} items", creationIds.size());
+            ResponseEntity<Map<String, Object>> carouselResponse = restTemplate.exchange(
+                mediaUrl,
+                HttpMethod.POST,
+                carouselRequest,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+
+            if (!carouselResponse.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Instagram API error creating carousel container: " + carouselResponse.getStatusCode());
+            }
+
+            Map<String, Object> carouselBodyResponse = carouselResponse.getBody();
+            String creationId = carouselBodyResponse != null ? (String) carouselBodyResponse.get("id") : null;
+            if (creationId == null) {
+                throw new RuntimeException("No creation ID returned for carousel container");
+            }
+
+            String publishUrl = String.format("%s/%s/media_publish", INSTAGRAM_API_URL, accountId);
+            Map<String, String> publishParams = new LinkedHashMap<>();
+            publishParams.put("creation_id", creationId);
+            publishParams.put("access_token", token);
+
+            String queryString = buildQueryString(publishParams);
+            String publishUri = publishUrl + "?" + queryString;
+
+            logger.info("Publishing carousel container");
+            ResponseEntity<Map<String, Object>> publishResponse = restTemplate.exchange(
+                publishUri,
+                HttpMethod.POST,
+                null,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+
+            if (!publishResponse.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Instagram API error publishing carousel: " + publishResponse.getStatusCode());
+            }
+
+            return creationId;
+        } catch (Exception e) {
+            logger.error("Failed to create/publish Instagram carousel", e);
             throw e;
         }
     }
@@ -312,5 +427,112 @@ public class InstagramServiceImpl implements InstagramService {
                     .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
         }
         return sb.toString();
+    }
+
+    private List<String> normalizeImageUrls(List<String> imageUrls) {
+        List<String> normalized = new ArrayList<>();
+        for (String url : imageUrls) {
+            if (url == null || url.isBlank()) {
+                continue;
+            }
+            normalized.add(normalizeImageUrl(url));
+        }
+        return normalized;
+    }
+
+    private String normalizeImageUrl(String url) {
+        if (mediaUseSignedUrls) {
+            return signSupabaseUrl(url);
+        }
+
+        String publicBase = normalizeBase(mediaPublicBaseUrl);
+        if (publicBase.isEmpty()) {
+            return url;
+        }
+
+        String originBase = normalizeBase(mediaOriginBaseUrl);
+        if (!originBase.isEmpty() && url.startsWith(originBase)) {
+            return publicBase + url.substring(originBase.length());
+        }
+
+        return url;
+    }
+
+    private String normalizeBase(String baseUrl) {
+        if (baseUrl == null) {
+            return "";
+        }
+        String trimmed = baseUrl.trim();
+        if (trimmed.endsWith("/")) {
+            return trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    private String signSupabaseUrl(String url) {
+        String resolvedSupabaseUrl = supabaseUrl != null ? supabaseUrl.trim() : "";
+        String resolvedKey = supabaseKey != null ? supabaseKey.trim() : "";
+        if (resolvedSupabaseUrl.isEmpty() || resolvedKey.isEmpty()) {
+            throw new IllegalStateException("Supabase credentials are required to generate signed URLs for Instagram");
+        }
+
+        String originBase = normalizeBase(mediaOriginBaseUrl);
+        if (originBase.isEmpty()) {
+            originBase = normalizeBase(resolvedSupabaseUrl + "/storage/v1/object/public");
+        }
+
+        if (!url.startsWith(originBase)) {
+            return url;
+        }
+
+        String objectPath = url.substring(originBase.length());
+        if (objectPath.startsWith("/")) {
+            objectPath = objectPath.substring(1);
+        }
+
+        int slashIndex = objectPath.indexOf('/');
+        if (slashIndex <= 0 || slashIndex == objectPath.length() - 1) {
+            throw new IllegalStateException("Unable to parse Supabase bucket/path from URL");
+        }
+
+        String bucket = objectPath.substring(0, slashIndex);
+        String path = objectPath.substring(slashIndex + 1);
+
+        String signUrl = resolvedSupabaseUrl + "/storage/v1/object/sign/" + bucket + "/" + path;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("expiresIn", Math.max(60, mediaSignedUrlTtlSeconds));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(resolvedKey);
+        headers.set("apikey", resolvedKey);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                signUrl,
+                HttpMethod.POST,
+                request,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+        );
+
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new IllegalStateException("Failed to generate signed URL for Instagram");
+        }
+
+        Object signedUrlValue = response.getBody().get("signedURL");
+        if (signedUrlValue == null) {
+            signedUrlValue = response.getBody().get("signedUrl");
+        }
+        if (signedUrlValue == null) {
+            throw new IllegalStateException("Signed URL response missing signedURL field");
+        }
+
+        String signedUrl = String.valueOf(signedUrlValue);
+        if (signedUrl.startsWith("http")) {
+            return signedUrl;
+        }
+
+        return resolvedSupabaseUrl + signedUrl;
     }
 }

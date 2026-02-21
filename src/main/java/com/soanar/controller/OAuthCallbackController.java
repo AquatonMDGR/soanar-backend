@@ -153,15 +153,12 @@ public class OAuthCallbackController {
             String clientId;
             String clientSecret;
 
-            if ("facebook".equalsIgnoreCase(provider)) {
-                tokenUrl = "https://graph.facebook.com/v19.0/oauth/access_token";
-                clientId = facebookClientId;
-                clientSecret = facebookClientSecret;
-            } else if ("instagram".equalsIgnoreCase(provider)) {
-                tokenUrl = "https://graph.facebook.com/v19.0/oauth/access_token";
-                clientId = instagramClientId;
-                clientSecret = instagramClientSecret;
-            } else {
+            // Facebook and Instagram use the SAME App ID (unified Meta OAuth)
+            tokenUrl = "https://graph.facebook.com/v19.0/oauth/access_token";
+            clientId = facebookClientId;
+            clientSecret = facebookClientSecret;
+
+            if (!("facebook".equalsIgnoreCase(provider) || "instagram".equalsIgnoreCase(provider))) {
                 throw new IllegalArgumentException("Unsupported provider: " + provider);
             }
 
@@ -193,7 +190,11 @@ public class OAuthCallbackController {
             if ("facebook".equalsIgnoreCase(provider)) {
                 String userAccessToken = (String) response.get("access_token");
                 Map<String, String> pageData = fetchFacebookPrimaryPage(userAccessToken);
-                response.put("page_id", pageData.getOrDefault("page_id", ""));
+                String pageId = pageData.getOrDefault("page_id", "");
+                if (pageId == null || pageId.isBlank()) {
+                    logger.warn("Facebook page ID fetch returned empty. This means /me/accounts returned no pages. Check if you have pages_show_list scope approved and are an admin of at least one page.");
+                }
+                response.put("page_id", pageId);
                 String pageAccessToken = pageData.getOrDefault("page_access_token", "");
                 if (!pageAccessToken.isBlank()) {
                     response.put("access_token", pageAccessToken);
@@ -229,19 +230,127 @@ public class OAuthCallbackController {
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
 
+            logger.info("Facebook /me/accounts response: {}", response);
+
             if (response != null && response.containsKey("data")) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> data = (List<Map<String, Object>>) response.get("data");
+                logger.info("Facebook pages list size: {}", data.size());
                 if (!data.isEmpty()) {
                     Map<String, Object> page = data.get(0);
                     result.put("page_id", String.valueOf(page.getOrDefault("id", "")));
                     result.put("page_access_token", String.valueOf(page.getOrDefault("access_token", "")));
+                    logger.info("Captured Facebook page_id: {}", result.get("page_id"));
                 }
+            } else {
+                logger.warn("No 'data' key in response or response is null");
             }
         } catch (Exception e) {
             logger.warn("Failed to fetch Facebook page data", e);
         }
         return result;
+    }
+
+    /**
+     * Fetch Instagram Business Account ID from user access token
+     * Tries two approaches:
+     * 1. Get from /me?fields=instagram_business_account (direct link)
+     * 2. Get from user's primary Facebook Page (page link)
+     */
+    private String fetchInstagramBusinessAccount(String userAccessToken) {
+        // Approach 1: Try to get from user directly
+        try {
+            String url = String.format(
+                    "https://graph.facebook.com/v19.0/me?fields=instagram_business_account&access_token=%s",
+                    userAccessToken
+            );
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            logger.info("Response from /me?fields=instagram_business_account: {}", response);
+
+            if (response != null && response.containsKey("instagram_business_account")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> igAccount = (Map<String, Object>) response.get("instagram_business_account");
+                String accountId = (String) igAccount.get("id");
+                logger.info("Instagram Business Account from /me: {}", igAccount);
+                if (accountId != null && !accountId.isBlank()) {
+                    logger.info("Successfully fetched Instagram Business Account from /me: {}", accountId);
+                    return accountId;
+                }
+            }
+            logger.warn("No Instagram Business Account found on user profile. Response: {}", response);
+        } catch (Exception e) {
+            logger.warn("Failed to fetch Instagram Business Account from /me", e);
+        }
+
+        // Approach 2: Get from primary Facebook Page
+        try {
+            logger.info("Attempting to fetch Instagram Business Account from user's primary Facebook Page");
+            String pageUrl = String.format(
+                    "https://graph.facebook.com/v19.0/me/accounts?fields=id,access_token,name,instagram_business_account&access_token=%s",
+                    userAccessToken
+            );
+            @SuppressWarnings("unchecked")
+            Map<String, Object> pageResponse = restTemplate.getForObject(pageUrl, Map.class);
+            logger.info("Response from /me/accounts: {}", pageResponse);
+
+            if (pageResponse != null && pageResponse.containsKey("data")) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> data = (List<Map<String, Object>>) pageResponse.get("data");
+                if (!data.isEmpty()) {
+                    Map<String, Object> primaryPage = data.get(0);
+                    logger.info("Primary page data: {}", primaryPage);
+                    
+                    // Check if page has instagram_business_account field
+                    if (primaryPage.containsKey("instagram_business_account")) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> igAccount = (Map<String, Object>) primaryPage.get("instagram_business_account");
+                        logger.info("Instagram Business Account from Page (embedded): {}", igAccount);
+                        String accountId = (String) igAccount.get("id");
+                        if (accountId != null && !accountId.isBlank()) {
+                            logger.info("Successfully fetched Instagram Business Account from Page: {}", accountId);
+                            return accountId;
+                        }
+                    }
+                    
+                    // If page has the account but not embedded, fetch it separately
+                    String pageId = (String) primaryPage.get("id");
+                    String pageAccessToken = (String) primaryPage.get("access_token");
+                    if (pageId != null && pageAccessToken != null) {
+                        logger.info("Fetching Instagram Business Account details from page {}", pageId);
+                        String pageDetailsUrl = String.format(
+                                "https://graph.facebook.com/v19.0/%s?fields=instagram_business_account&access_token=%s",
+                                pageId, pageAccessToken
+                        );
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> pageDetailsResponse = restTemplate.getForObject(pageDetailsUrl, Map.class);
+                        logger.info("Page details response: {}", pageDetailsResponse);
+                        
+                        if (pageDetailsResponse != null && pageDetailsResponse.containsKey("instagram_business_account")) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> igAccount = (Map<String, Object>) pageDetailsResponse.get("instagram_business_account");
+                            logger.info("Instagram Business Account from Page details: {}", igAccount);
+                            String accountId = (String) igAccount.get("id");
+                            if (accountId != null && !accountId.isBlank()) {
+                                logger.info("Successfully fetched Instagram Business Account from Page details: {}", accountId);
+                                return accountId;
+                            }
+                        }
+                    }
+                }
+            }
+            logger.warn("No Instagram Business Account found on user's Facebook Pages. Response: {}", pageResponse);
+        } catch (Exception e) {
+            logger.warn("Failed to fetch Instagram Business Account from Pages", e);
+        }
+
+        logger.error("CRITICAL: Could not fetch Instagram Business Account ID. Possible causes:\n" +
+                "1. User is not an admin of any Facebook pages\n" +
+                "2. pages_show_list or pages_manage_posts scopes not approved in Meta App\n" +
+                "3. No Facebook pages exist for this user\n" +
+                "4. Instagram Business Account not linked to any Facebook page\n" +
+                "5. User needs to re-authorize with auth_type=rerequest");
+        return null;
     }
 
     /**

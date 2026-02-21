@@ -31,6 +31,12 @@ public class AnnouncementService {
     @Value("${supabase.service-role-key}")
     private String supabaseKey;
 
+    @Value("${media.public-base-url:}")
+    private String mediaPublicBaseUrl;
+
+    @Value("${media.origin-base-url:}")
+    private String mediaOriginBaseUrl;
+
     public AnnouncementService(AnnouncementRepository announcementRepository,
                                 NotificationService notificationService) {
         this.announcementRepository = announcementRepository;
@@ -111,9 +117,30 @@ public class AnnouncementService {
     }
 
     @Transactional
+    public Announcement approve(Long id, User approver, String notes) {
+        Announcement a = announcementRepository.findById(id).orElseThrow();
+        a.setStatus("PUBLISHED");
+        a.setPublishedAt(Instant.now());
+        a.setApprovedBy(approver);
+        a.setApprovedAt(Instant.now());
+        a.setApprovalNotes(notes);
+        return announcementRepository.save(a);
+    }
+
+    @Transactional
     public Announcement reject(Long id) {
         Announcement a = announcementRepository.findById(id).orElseThrow();
         a.setStatus("REJECTED");
+        return announcementRepository.save(a);
+    }
+
+    @Transactional
+    public Announcement reject(Long id, User rejector, String rejectionReason) {
+        Announcement a = announcementRepository.findById(id).orElseThrow();
+        a.setStatus("REJECTED");
+        a.setApprovedBy(rejector);
+        a.setApprovedAt(Instant.now());
+        a.setApprovalNotes(rejectionReason);
         return announcementRepository.save(a);
     }
     
@@ -205,7 +232,7 @@ public class AnnouncementService {
                 // Return public URL
                 String publicUrl = resolvedUrl + "/storage/v1/object/public/" + bucketName + "/" + fullPath;
                 System.out.println("Upload successful, public URL: " + publicUrl);
-                return publicUrl;
+                return normalizePublicMediaUrl(publicUrl, resolvedUrl);
             } else {
                 throw new IOException("Supabase upload failed: " + response.statusCode() + " - " + response.body());
             }
@@ -235,5 +262,34 @@ public class AnnouncementService {
         }
         
         return urls;
+    }
+
+    private String normalizePublicMediaUrl(String publicUrl, String resolvedSupabaseUrl) {
+        String publicBase = normalizeBase(mediaPublicBaseUrl);
+        if (publicBase.isEmpty()) {
+            return publicUrl;
+        }
+
+        String originBase = normalizeBase(mediaOriginBaseUrl);
+        if (originBase.isEmpty()) {
+            originBase = normalizeBase(resolvedSupabaseUrl + "/storage/v1/object/public");
+        }
+
+        if (publicUrl.startsWith(originBase)) {
+            return publicBase + publicUrl.substring(originBase.length());
+        }
+
+        return publicUrl;
+    }
+
+    private String normalizeBase(String baseUrl) {
+        if (baseUrl == null) {
+            return "";
+        }
+        String trimmed = baseUrl.trim();
+        if (trimmed.endsWith("/")) {
+            return trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
     }
 }

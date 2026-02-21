@@ -44,13 +44,43 @@ public class AnnouncementController {
     }
 
     @GetMapping
-    public List<Announcement> list(@RequestParam(required = false) String status) {
-        if ("PUBLISHED".equals(status) || "APPROVED".equals(status)) {
-            return announcementService.getPublished();
-        } else if ("PENDING".equals(status)) {
-            return announcementService.getPending();
+    public ResponseEntity<?> list(
+            @RequestParam(required = false) String status,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        try {
+            if ("PUBLISHED".equals(status) || "APPROVED".equals(status)) {
+                return ResponseEntity.ok(announcementService.getPublished());
+            }
+
+            String role = null;
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                String token = authHeader.replace("Bearer ", "");
+                String email = jwtUtil.extractEmail(token);
+                // Load current role from database instead of JWT to reflect real-time role changes
+                var user = userService.findByEmail(email);
+                if (user.isPresent()) {
+                    role = user.get().getRole();
+                } else {
+                    // Fallback to JWT role if user not found in database
+                    role = jwtUtil.extractRole(token);
+                }
+            }
+
+            if ("PENDING".equals(status)) {
+                if (!"OSAS".equals(role) && !"Academic".equals(role) && !"Super Admin".equals(role)) {
+                    return ResponseEntity.status(403).body(Map.of("error", "Not authorized to view pending announcements"));
+                }
+                return ResponseEntity.ok(announcementService.getPending());
+            }
+
+            if ("OSAS".equals(role) || "Academic".equals(role) || "Super Admin".equals(role)) {
+                return ResponseEntity.ok(announcementService.listAll());
+            }
+
+            return ResponseEntity.ok(announcementService.getPublished());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
-        return announcementService.listAll();
     }
 
     @PostMapping
@@ -115,17 +145,23 @@ public class AnnouncementController {
     @PostMapping("/{id}/approve")
     public ResponseEntity<?> approve(
             @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long id) {
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> payload) {
         
         try {
             String token = authHeader.replace("Bearer ", "");
             String role = jwtUtil.extractRole(token);
+            String email = jwtUtil.extractEmail(token);
             
             if (!"OSAS".equals(role)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));
             }
             
-            Announcement a = announcementService.approve(id);
+            User approver = userService.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            String notes = (payload != null && payload.containsKey("notes")) ? payload.get("notes") : "";
+            Announcement a = announcementService.approve(id, approver, notes);
             
             // Send notifications in separate transaction
             try {
@@ -144,17 +180,23 @@ public class AnnouncementController {
     @PostMapping("/{id}/reject")
     public ResponseEntity<?> reject(
             @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long id) {
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> payload) {
         
         try {
             String token = authHeader.replace("Bearer ", "");
             String role = jwtUtil.extractRole(token);
+            String email = jwtUtil.extractEmail(token);
             
             if (!"OSAS".equals(role)) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can reject"));
             }
             
-            Announcement a = announcementService.reject(id);
+            User rejector = userService.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            String reason = (payload != null && payload.containsKey("reason")) ? payload.get("reason") : "";
+            Announcement a = announcementService.reject(id, rejector, reason);
             
             // Send notifications in separate transaction
             try {
@@ -214,16 +256,28 @@ public class AnnouncementController {
             String role = jwtUtil.extractRole(token);
             String email = jwtUtil.extractEmail(token);
 
-                // Only Student Organization, OSAS, or Academic can crosspost
+            // Only Student Organization, OSAS, or Academic can crosspost
             Announcement announcement = announcementService.findById(id)
                     .orElseThrow(() -> new RuntimeException("Announcement not found"));
 
-                boolean isAuthorized = "Student Organization".equals(role)
+            boolean isAuthorized = "Student Organization".equals(role)
                     || "OSAS".equals(role)
                     || "Academic".equals(role);
 
             if (!isAuthorized) {
                 return ResponseEntity.status(403).body(Map.of("error", "Not authorized to crosspost"));
+            }
+
+            boolean isPrivileged = "OSAS".equals(role) || "Academic".equals(role);
+            String posterEmail = announcement.getPostedBy() != null ? announcement.getPostedBy().getSchoolEmail() : null;
+            boolean isOwner = posterEmail != null && posterEmail.equalsIgnoreCase(email);
+
+            if (!isPrivileged && !isOwner) {
+                return ResponseEntity.status(403).body(Map.of("error", "You can only crosspost your own announcements"));
+            }
+
+            if (!"APPROVED".equals(announcement.getStatus()) && !"PUBLISHED".equals(announcement.getStatus())) {
+                return ResponseEntity.status(400).body(Map.of("error", "Only approved or published announcements can be crossposted"));
             }
 
             CrosspostRequest resolvedRequest = null;
@@ -233,6 +287,12 @@ public class AnnouncementController {
 
             if (resolvedRequest == null) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing crosspost request"));
+            }
+
+            boolean facebookEnabled = resolvedRequest.getFacebook() != null && Boolean.TRUE.equals(resolvedRequest.getFacebook().getEnabled());
+            boolean instagramEnabled = resolvedRequest.getInstagram() != null && Boolean.TRUE.equals(resolvedRequest.getInstagram().getEnabled());
+            if (!facebookEnabled && !instagramEnabled) {
+                return ResponseEntity.badRequest().body(Map.of("error", "At least one platform must be enabled"));
             }
 
             List<MultipartFile> images = new ArrayList<>();
@@ -268,9 +328,25 @@ public class AnnouncementController {
      */
     @GetMapping("/{id}/crosspost-status")
     public ResponseEntity<?> getCrosspostStatus(
+            @RequestHeader("Authorization") String authHeader,
             @PathVariable Long id) {
 
         try {
+            String token = authHeader.replace("Bearer ", "");
+            String role = jwtUtil.extractRole(token);
+            String email = jwtUtil.extractEmail(token);
+
+            Announcement announcement = announcementService.findById(id)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
+
+            boolean isPrivileged = "OSAS".equals(role) || "Academic".equals(role) || "Super Admin".equals(role);
+            String posterEmail = announcement.getPostedBy() != null ? announcement.getPostedBy().getSchoolEmail() : null;
+            boolean isOwner = posterEmail != null && posterEmail.equalsIgnoreCase(email);
+
+            if (!isPrivileged && !isOwner) {
+            return ResponseEntity.status(403).body(Map.of("error", "Not authorized to view crosspost status"));
+            }
+
             List<?> posts = crosspostService.getPostsForAnnouncement(id);
             return ResponseEntity.ok(Map.of(
                     "announcementId", id,

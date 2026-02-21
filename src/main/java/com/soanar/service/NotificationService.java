@@ -5,9 +5,15 @@ import com.soanar.model.Notification;
 import com.soanar.model.User;
 import com.soanar.model.DistributionGroup;
 import com.soanar.model.DistributionGroupMember;
+import com.soanar.model.NotificationPreference;
 import com.soanar.repository.NotificationRepository;
 import com.soanar.repository.UserRepository;
 import com.soanar.repository.DistributionGroupMemberRepository;
+import com.soanar.repository.NotificationPreferenceRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,15 +29,18 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final DistributionGroupMemberRepository distributionGroupMemberRepository;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final EmailService emailService;
 
     public NotificationService(NotificationRepository notificationRepository, 
                                UserRepository userRepository,
                                DistributionGroupMemberRepository distributionGroupMemberRepository,
+                               NotificationPreferenceRepository notificationPreferenceRepository,
                                EmailService emailService) {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.distributionGroupMemberRepository = distributionGroupMemberRepository;
+        this.notificationPreferenceRepository = notificationPreferenceRepository;
         this.emailService = emailService;
     }
 
@@ -316,5 +325,111 @@ public class NotificationService {
         } catch (Exception e) {
             System.err.println("Failed to send event-created email to " + recipientEmail + ": " + e.getMessage());
         }
+    }
+    
+    // ========== Phase 6 Enhancements ==========
+    
+    /**
+     * Create a generic notification (Phase 6)
+     */
+    @Transactional
+    public Notification createNotification(User user, String type, String title, String body, String actionUrl, String entityType, Long entityId) {
+        // Check user preferences
+        NotificationPreference prefs = getOrCreatePreferences(user, "default-org");
+        if (!prefs.getNotifyInApp()) {
+            return null; // User disabled in-app notifications
+        }
+        
+        Notification notification = new Notification(user, user.getSchoolEmail(), type, title, body, actionUrl, entityType, entityId);
+        notification = notificationRepository.save(notification);
+        
+        // Send email if enabled
+        if (prefs.getNotifyByEmail()) {
+            try {
+                String html = "<html><body><p>" + body + "</p></body></html>";
+                emailService.sendTargetedEmail(Collections.singletonList(user.getSchoolEmail()), title, html);
+            } catch (Exception e) {
+                System.err.println("Failed to send notification email: " + e.getMessage());
+            }
+        }
+        
+        return notification;
+    }
+    
+    /**
+     * Get paginated notifications for a user
+     */
+    public Page<Notification> getNotificationsForUser(User user, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        return notificationRepository.findByUserOrderByCreatedAtDesc(user, pageable);
+    }
+    
+    /**
+     * Get unread notifications for a user
+     */
+    public List<Notification> getUnreadNotifications(User user) {
+        return notificationRepository.findUnreadByUser(user);
+    }
+    
+    /**
+     * Get unread notification count
+     */
+    public long getUnreadCount(User user) {
+        return notificationRepository.countUnreadByUser(user);
+    }
+    
+    /**
+     * Mark notification as read (Phase 6 - by ID)
+     */
+    @Transactional
+    public void markNotificationAsRead(Long notificationId) {
+        markAsRead(notificationId);
+    }
+    
+    /**
+     * Mark all notifications as read for a user
+     */
+    @Transactional
+    public void markAllNotificationsAsRead(User user) {
+        markAllAsRead(user.getSchoolEmail());
+    }
+    
+    /**
+     * Get or create notification preferences for a user
+     */
+    private NotificationPreference getOrCreatePreferences(User user, String organizationId) {
+        return notificationPreferenceRepository.findByUserAndOrganizationId(user, organizationId)
+            .orElseGet(() -> {
+                NotificationPreference prefs = new NotificationPreference();
+                prefs.setUser(user);
+                prefs.setOrganizationId(organizationId);
+                return notificationPreferenceRepository.save(prefs);
+            });
+    }
+    
+    /**
+     * Get notification preferences
+     */
+    public NotificationPreference getPreferences(User user, String organizationId) {
+        return getOrCreatePreferences(user, organizationId);
+    }
+    
+    /**
+     * Update notification preferences
+     */
+    @Transactional
+    public NotificationPreference updatePreferences(User user, String organizationId, NotificationPreference updates) {
+        NotificationPreference prefs = getOrCreatePreferences(user, organizationId);
+        
+        if (updates.getNotifyByEmail() != null) prefs.setNotifyByEmail(updates.getNotifyByEmail());
+        if (updates.getNotifyInApp() != null) prefs.setNotifyInApp(updates.getNotifyInApp());
+        if (updates.getNotifyOnApproval() != null) prefs.setNotifyOnApproval(updates.getNotifyOnApproval());
+        if (updates.getNotifyOnRejection() != null) prefs.setNotifyOnRejection(updates.getNotifyOnRejection());
+        if (updates.getNotifyOnPublish() != null) prefs.setNotifyOnPublish(updates.getNotifyOnPublish());
+        if (updates.getNotifyOnComment() != null) prefs.setNotifyOnComment(updates.getNotifyOnComment());
+        if (updates.getNotifyOnMention() != null) prefs.setNotifyOnMention(updates.getNotifyOnMention());
+        
+        prefs.setUpdatedAt(Instant.now());
+        return notificationPreferenceRepository.save(prefs);
     }
 }

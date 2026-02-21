@@ -1,6 +1,9 @@
 package com.soanar.repository;
 
 import com.soanar.model.Notification;
+import com.soanar.model.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -19,4 +22,20 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Transactional
     @Query("UPDATE Notification n SET n.readAt = :readTime WHERE n.recipientEmail = :email AND n.readAt IS NULL")
     void markAllAsReadForUser(@Param("email") String email, @Param("readTime") Instant readTime);
+    
+    // Phase 6 enhancements
+    Page<Notification> findByUserOrderByCreatedAtDesc(User user, Pageable pageable);
+    Page<Notification> findByRecipientEmailOrderByCreatedAtDesc(String email, Pageable pageable);
+    
+    @Query("SELECT n FROM Notification n WHERE n.user = ?1 AND n.readAt IS NULL ORDER BY n.createdAt DESC")
+    List<Notification> findUnreadByUser(User user);
+    
+    @Query("SELECT n FROM Notification n WHERE n.recipientEmail = ?1 AND n.readAt IS NULL ORDER BY n.createdAt DESC")
+    List<Notification> findUnreadByEmail(String email);
+    
+    @Query("SELECT COUNT(n) FROM Notification n WHERE n.user = ?1 AND n.readAt IS NULL")
+    long countUnreadByUser(User user);
+    
+    @Query("SELECT COUNT(n) FROM Notification n WHERE n.recipientEmail = ?1 AND n.readAt IS NULL")
+    long countUnreadByEmail(String email);
 }
