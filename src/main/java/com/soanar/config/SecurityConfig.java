@@ -47,7 +47,8 @@ public class SecurityConfig {
                     "/api/login",
                     "/api/db/**",
                     "/api/auth/oauth/callback",
-                    "/api/announcements"
+                    "/api/announcements",
+                    "/api/announcements/public/**"  // Public access for AddToAny sharing
                 ).permitAll()
                 .anyRequest().authenticated()
             )

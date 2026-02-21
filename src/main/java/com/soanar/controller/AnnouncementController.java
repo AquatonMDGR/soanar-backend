@@ -235,6 +235,28 @@ public class AnnouncementController {
     }
 
     /**
+     * Get public announcement (no authentication required)
+     * GET /api/announcements/public/{id}
+     * Used for: AddToAny social sharing
+     */
+    @GetMapping("/public/{id}")
+    public ResponseEntity<?> getPublicAnnouncement(@PathVariable Long id) {
+        try {
+            Announcement announcement = announcementService.findById(id)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
+            
+            // Only return published announcements
+            if (!"PUBLISHED".equals(announcement.getStatus()) && !"APPROVED".equals(announcement.getStatus())) {
+                return ResponseEntity.status(404).body(Map.of("error", "Announcement not found"));
+            }
+            
+            return ResponseEntity.ok(announcement);
+        } catch (Exception e) {
+            return ResponseEntity.status(404).body(Map.of("error", "Announcement not found"));
+        }
+    }
+
+    /**
      * DEBUG: Check imageUrls in database for specific announcement
      * GET /api/announcements/{id}/debug-images
      */
