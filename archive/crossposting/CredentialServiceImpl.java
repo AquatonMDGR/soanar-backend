@@ -37,7 +37,7 @@ public class CredentialServiceImpl implements CredentialService {
                                                String pageId,
                                                String accessToken,
                                                long expirationSeconds) {
-        logger.info("Storing credentials for {} on {}", organizationId, platform);
+        logger.info("Storing USER_TOKEN credentials for {} on {}", organizationId, platform);
 
         // Check if credential already exists
         Optional<SocialMediaCredential> existing =
@@ -51,6 +51,9 @@ public class CredentialServiceImpl implements CredentialService {
             credential = new SocialMediaCredential(organizationId, platform, "", "");
             logger.info("Creating new credential for {}", platform);
         }
+
+        // Set token type to USER_TOKEN (OAuth flow)
+        credential.setTokenType(SocialMediaCredential.TokenType.USER_TOKEN);
 
         // Encrypt sensitive fields
         credential.setPageId(encryptionService.encrypt(pageId.trim()));
@@ -66,7 +69,46 @@ public class CredentialServiceImpl implements CredentialService {
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
 
-        logger.info("Credentials stored successfully for {}", platform);
+        logger.info("USER_TOKEN credentials stored successfully for {}", platform);
+        return credential;
+    }
+
+    @Override
+    public SocialMediaCredential storeSystemUserCredential(UUID organizationId,
+                                                          SocialMediaCredential.Platform platform,
+                                                          String pageId,
+                                                          String accessToken) {
+        logger.info("Storing SYSTEM_USER_TOKEN credentials for {} on {}", organizationId, platform);
+
+        // Check if credential already exists
+        Optional<SocialMediaCredential> existing =
+                credentialRepository.findByOrganizationIdAndPlatform(organizationId, platform);
+
+        SocialMediaCredential credential;
+        if (existing.isPresent()) {
+            credential = existing.get();
+            logger.info("Updating existing credential for {}", platform);
+        } else {
+            credential = new SocialMediaCredential(organizationId, platform, "", "");
+            logger.info("Creating new credential for {}", platform);
+        }
+
+        // Set token type to SYSTEM_USER_TOKEN (Business Portfolio)
+        credential.setTokenType(SocialMediaCredential.TokenType.SYSTEM_USER_TOKEN);
+
+        // Encrypt sensitive fields
+        credential.setPageId(encryptionService.encrypt(pageId.trim()));
+        credential.setAccessToken(encryptionService.encrypt(accessToken.trim()));
+        credential.setIsActive(true);
+
+        // System User tokens are long-lived (90+ days) - set far future expiration
+        Instant expiresAt = Instant.now().plusSeconds(90L * 24 * 60 * 60); // 90 days
+        credential.setTokenExpiresAt(expiresAt);
+
+        credential.setUpdatedAt(Instant.now());
+        credentialRepository.save(credential);
+
+        logger.info("SYSTEM_USER_TOKEN credentials stored successfully for {}", platform);
         return credential;
     }
 

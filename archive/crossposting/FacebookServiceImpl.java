@@ -38,6 +38,15 @@ public class FacebookServiceImpl implements FacebookService {
     @Value("${facebook.api-key:}")
     private String facebookApiKey;
 
+    @Value("${facebook.system-user.enabled:false}")
+    private boolean systemUserEnabled;
+
+    @Value("${facebook.system-user.token:}")
+    private String systemUserToken;
+
+    @Value("${facebook.system-user.page-id:}")
+    private String systemUserPageId;
+
     private final CredentialService credentialService;
     private final ImageService imageService;
     private final RestTemplate restTemplate;
@@ -56,19 +65,19 @@ public class FacebookServiceImpl implements FacebookService {
 
         UUID orgId = organizationId;
 
-        // Get credentials
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
-        if (token.isEmpty()) {
+        // Get credentials (System User or OAuth)
+        TokenInfo tokenInfo = getTokenAndPageId(orgId);
+        String token = tokenInfo.token;
+        String pageId = tokenInfo.pageId;
+
+        if (token == null || token.isBlank()) {
             throw new IllegalStateException("Facebook credentials not configured");
         }
-
-        // Get decrypted page ID
-        Optional<String> pageIdOpt = credentialService.getDecryptedPageId(orgId, SocialMediaCredential.Platform.FACEBOOK);
-        if (pageIdOpt.isEmpty()) {
+        if (pageId == null || pageId.isBlank()) {
             throw new IllegalStateException("Facebook page ID not configured");
         }
-        
-        String pageId = pageIdOpt.get();
+
+        logger.info("Using {} token for Facebook posting", tokenInfo.tokenType);
 
         // Prepare caption
         String postCaption = caption != null && !caption.isEmpty() ? caption : buildDefaultCaption(announcement);
@@ -98,36 +107,36 @@ public class FacebookServiceImpl implements FacebookService {
             if (storedImageUrls != null && storedImageUrls.size() > 1) {
                 // Multiple images from database storage - create album post
                 logger.info("Posting Facebook announcement with {} stored images (album)", storedImageUrls.size());
-                postId = postWithMultipleImages(pageId, token.get(), postCaption, storedImageUrls);
+                postId = postWithMultipleImages(pageId, token, postCaption, storedImageUrls);
             }
             else if (storedImageUrls != null && storedImageUrls.size() == 1) {
                 // Single image from database storage
                 logger.info("Posting Facebook announcement with 1 stored image");
-                postId = postWithImageUrl(pageId, token.get(), postCaption, storedImageUrls.get(0));
+                postId = postWithImageUrl(pageId, token, postCaption, storedImageUrls.get(0));
             }
             else if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
                 // Legacy single image field - backward compatibility
                 logger.info("Posting Facebook announcement with legacy imageUrl");
-                postId = postWithImageUrl(pageId, token.get(), postCaption, announcement.getImageUrl());
+                postId = postWithImageUrl(pageId, token, postCaption, announcement.getImageUrl());
             }
             else if (!uploadImages.isEmpty()) {
                 if (uploadImages.size() > 1) {
                     logger.info("Posting Facebook announcement with {} uploaded images (album)", uploadImages.size());
-                    postId = postWithMultipleUploads(pageId, token.get(), postCaption, uploadImages);
+                    postId = postWithMultipleUploads(pageId, token, postCaption, uploadImages);
                 } else {
                     MultipartFile image = uploadImages.get(0);
                     logger.info("Posting Facebook announcement with uploaded image file");
                     imageService.validateImage(image);
                     byte[] imageData = image.getBytes();
                     byte[] resizedImage = imageService.resizeForFacebook(imageData);
-                    postId = uploadAndPostImage(pageId, token.get(), postCaption, resizedImage);
+                    postId = uploadAndPostImage(pageId, token, postCaption, resizedImage);
                 }
             }
             else {
                 // Text-only post
                 String feedUrl = String.format("%s/%s/feed", FACEBOOK_API_URL, pageId);
                 logger.info("Posting Facebook announcement without image (text-only)");
-                postId = postTextOnly(feedUrl, token.get(), postCaption);
+                postId = postTextOnly(feedUrl, token, postCaption);
             }
 
             logger.info("Successfully posted to Facebook: {}", postId);
@@ -250,14 +259,15 @@ public class FacebookServiceImpl implements FacebookService {
         logger.info("Deleting Facebook post: {}", postId);
 
         UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
+        TokenInfo tokenInfo = getTokenAndPageId(orgId);
+        String token = tokenInfo.token;
 
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             throw new IllegalStateException("Facebook credentials not configured");
         }
 
         try {
-            String url = String.format("%s/%s?access_token=%s", FACEBOOK_API_URL, postId, token.get());
+            String url = String.format("%s/%s?access_token=%s", FACEBOOK_API_URL, postId, token);
             restTemplate.delete(url);
             logger.info("Successfully deleted Facebook post: {}", postId);
         } catch (Exception e) {
@@ -271,16 +281,17 @@ public class FacebookServiceImpl implements FacebookService {
         logger.info("Getting engagement metrics for post: {}", postId);
 
         UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
+        TokenInfo tokenInfo = getTokenAndPageId(orgId);
+        String token = tokenInfo.token;
 
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             throw new IllegalStateException("Facebook credentials not configured");
         }
 
         try {
             String url = String.format(
                     "%s/%s?fields=likes.summary(true).limit(0),comments.summary(true).limit(0),shares&access_token=%s",
-                    FACEBOOK_API_URL, postId, token.get()
+                    FACEBOOK_API_URL, postId, token
             );
 
                 ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
@@ -337,15 +348,16 @@ public class FacebookServiceImpl implements FacebookService {
         logger.info("Validating Facebook token");
 
         UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.FACEBOOK);
+        TokenInfo tokenInfo = getTokenAndPageId(orgId);
+        String token = tokenInfo.token;
 
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             logger.warn("No Facebook token configured");
             return false;
         }
 
         try {
-            String url = String.format("%s/me?access_token=%s", FACEBOOK_API_URL, token.get());
+            String url = String.format("%s/me?access_token=%s", FACEBOOK_API_URL, token);
                 ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
@@ -600,5 +612,43 @@ public class FacebookServiceImpl implements FacebookService {
             logger.error("Feed post creation failed: {}", e.getMessage(), e);
             throw new Exception("Failed to create feed post with photos: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Get token and page ID, preferring System User configuration over OAuth tokens.
+     * This supports both personal OAuth flow and Meta Business Portfolio System Users.
+     */
+    private TokenInfo getTokenAndPageId(UUID organizationId) {
+        TokenInfo tokenInfo = new TokenInfo();
+
+        // Check if System User is enabled and configured
+        if (systemUserEnabled && systemUserToken != null && !systemUserToken.isBlank() 
+                && systemUserPageId != null && !systemUserPageId.isBlank()) {
+            logger.info("Using Facebook System User token (Business Portfolio)");
+            tokenInfo.token = systemUserToken.trim();
+            tokenInfo.pageId = systemUserPageId.trim();
+            tokenInfo.tokenType = "SYSTEM_USER";
+            return tokenInfo;
+        }
+
+        // Fallback to OAuth token from database
+        logger.info("Using Facebook OAuth token from database");
+        Optional<String> token = credentialService.getDecryptedToken(organizationId, SocialMediaCredential.Platform.FACEBOOK);
+        Optional<String> pageId = credentialService.getDecryptedPageId(organizationId, SocialMediaCredential.Platform.FACEBOOK);
+
+        tokenInfo.token = token.orElse(null);
+        tokenInfo.pageId = pageId.orElse(null);
+        tokenInfo.tokenType = "USER_TOKEN";
+
+        return tokenInfo;
+    }
+
+    /**
+     * Helper class to hold token and page ID together
+     */
+    private static class TokenInfo {
+        String token;
+        String pageId;
+        String tokenType;
     }
 }

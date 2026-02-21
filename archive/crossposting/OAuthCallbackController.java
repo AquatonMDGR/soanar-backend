@@ -201,12 +201,18 @@ public class OAuthCallbackController {
                 }
             }
 
-            // For Instagram, use returned user_id as page_id when present
-            if ("instagram".equalsIgnoreCase(provider) && !response.containsKey("page_id")) {
-                Object userId = response.get("user_id");
-                if (userId != null) {
-                    response.put("page_id", String.valueOf(userId));
+            // For Instagram, fetch Instagram Business Account ID
+            if ("instagram".equalsIgnoreCase(provider)) {
+                String userAccessToken = (String) response.get("access_token");
+                String igAccountId = fetchInstagramBusinessAccount(userAccessToken);
+                
+                if (igAccountId == null || igAccountId.isBlank()) {
+                    logger.error("Failed to retrieve Instagram Business Account ID. Cannot complete Instagram OAuth.");
+                    return null; // This will trigger error response in main handler
                 }
+                
+                response.put("page_id", igAccountId);
+                logger.info("Instagram Business Account ID retrieved: {}", igAccountId);
             }
 
             return response;

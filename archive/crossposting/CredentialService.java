@@ -10,10 +10,16 @@ import java.util.UUID;
 public interface CredentialService {
 
     /**
-     * Store credentials for a platform
+     * Store credentials for a platform (OAuth user token)
      */
     SocialMediaCredential storeCredential(UUID organizationId, SocialMediaCredential.Platform platform,
                                          String pageId, String accessToken, long expirationSeconds);
+
+    /**
+     * Store System User credentials for a platform (Meta Business Portfolio)
+     */
+    SocialMediaCredential storeSystemUserCredential(UUID organizationId, SocialMediaCredential.Platform platform,
+                                                   String pageId, String accessToken);
 
     /**
      * Get active credentials for a platform

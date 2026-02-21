@@ -32,6 +32,15 @@ public class InstagramServiceImpl implements InstagramService {
     @Value("${instagram.api-key:}")
     private String instagramApiKey;
 
+    @Value("${instagram.system-user.enabled:false}")
+    private boolean systemUserEnabled;
+
+    @Value("${instagram.system-user.token:}")
+    private String systemUserToken;
+
+    @Value("${instagram.system-user.account-id:}")
+    private String systemUserAccountId;
+
     @Value("${media.public-base-url:}")
     private String mediaPublicBaseUrl;
 
@@ -87,23 +96,20 @@ public class InstagramServiceImpl implements InstagramService {
 
         imageUrls = normalizeImageUrls(imageUrls);
 
-        UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
+        // Get credentials (System User or OAuth)
+        TokenInfo tokenInfo = getTokenAndAccountId(organizationId);
+        String token = tokenInfo.token;
+        String accountId = tokenInfo.accountId;
         
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             throw new IllegalStateException("Instagram credentials not configured");
         }
-
-        Optional<String> accountIdOpt = credentialService.getDecryptedPageId(orgId, SocialMediaCredential.Platform.INSTAGRAM);
-        if (accountIdOpt.isEmpty()) {
-            throw new IllegalStateException("Instagram account ID not configured");
-        }
-        
-        String accountId = accountIdOpt.get();
         if (accountId == null || accountId.isBlank()) {
             logger.error("Instagram account ID is empty or null. Instagram Business Account was not properly retrieved during OAuth.");
             throw new IllegalStateException("Instagram account ID is empty. Ensure your Instagram Business Account is connected to your Facebook account and try reconnecting.");
         }
+
+        logger.info("Using {} token for Instagram posting", tokenInfo.tokenType);
 
         // Prepare caption
         String postCaption = caption != null && !caption.isEmpty() ? caption : buildDefaultCaption(announcement);
@@ -111,10 +117,10 @@ public class InstagramServiceImpl implements InstagramService {
         try {
             String mediaId;
             if (imageUrls.size() > 1) {
-                mediaId = createAndPublishCarouselContainer(accountId, token.get(), postCaption, imageUrls);
+                mediaId = createAndPublishCarouselContainer(accountId, token, postCaption, imageUrls);
             } else {
                 String imageUrl = imageUrls.get(0);
-                mediaId = createAndPublishMediaContainer(accountId, token.get(), postCaption, imageUrl);
+                mediaId = createAndPublishMediaContainer(accountId, token, postCaption, imageUrl);
             }
 
             logger.info("Successfully posted to Instagram: {}", mediaId);
@@ -293,15 +299,15 @@ public class InstagramServiceImpl implements InstagramService {
     public void deletePost(String postId, UUID organizationId) throws Exception {
         logger.info("Deleting Instagram post: {}", postId);
 
-        UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
+        TokenInfo tokenInfo = getTokenAndAccountId(organizationId);
+        String token = tokenInfo.token;
 
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             throw new IllegalStateException("Instagram credentials not configured");
         }
 
         try {
-            String url = String.format("%s/%s?access_token=%s", INSTAGRAM_API_URL, postId, token.get());
+            String url = String.format("%s/%s?access_token=%s", INSTAGRAM_API_URL, postId, token);
             restTemplate.delete(url);
             logger.info("Successfully deleted Instagram post: {}", postId);
         } catch (Exception e) {
@@ -314,17 +320,17 @@ public class InstagramServiceImpl implements InstagramService {
     public Map<String, Object> getEngagement(String postId, UUID organizationId) throws Exception {
         logger.info("Getting engagement metrics for post: {}", postId);
 
-        UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
+        TokenInfo tokenInfo = getTokenAndAccountId(organizationId);
+        String token = tokenInfo.token;
 
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             throw new IllegalStateException("Instagram credentials not configured");
         }
 
         try {
             String url = String.format(
                     "%s/%s?fields=like_count,comments_count,caption&access_token=%s",
-                    INSTAGRAM_API_URL, postId, token.get()
+                    INSTAGRAM_API_URL, postId, token
             );
 
                 ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
@@ -359,16 +365,16 @@ public class InstagramServiceImpl implements InstagramService {
     public boolean validateToken(UUID organizationId) throws Exception {
         logger.info("Validating Instagram token");
 
-        UUID orgId = organizationId;
-        Optional<String> token = credentialService.getDecryptedToken(orgId, SocialMediaCredential.Platform.INSTAGRAM);
+        TokenInfo tokenInfo = getTokenAndAccountId(organizationId);
+        String token = tokenInfo.token;
 
-        if (token.isEmpty()) {
+        if (token == null || token.isBlank()) {
             logger.warn("No Instagram token configured");
             return false;
         }
 
         try {
-            String url = String.format("%s/me?access_token=%s", INSTAGRAM_API_URL, token.get());
+            String url = String.format("%s/me?access_token=%s", INSTAGRAM_API_URL, token);
                 ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
@@ -534,5 +540,43 @@ public class InstagramServiceImpl implements InstagramService {
         }
 
         return resolvedSupabaseUrl + signedUrl;
+    }
+
+    /**
+     * Get token and account ID, preferring System User configuration over OAuth tokens.
+     * This supports both personal OAuth flow and Meta Business Portfolio System Users.
+     */
+    private TokenInfo getTokenAndAccountId(UUID organizationId) {
+        TokenInfo tokenInfo = new TokenInfo();
+
+        // Check if System User is enabled and configured
+        if (systemUserEnabled && systemUserToken != null && !systemUserToken.isBlank() 
+                && systemUserAccountId != null && !systemUserAccountId.isBlank()) {
+            logger.info("Using Instagram System User token (Business Portfolio)");
+            tokenInfo.token = systemUserToken.trim();
+            tokenInfo.accountId = systemUserAccountId.trim();
+            tokenInfo.tokenType = "SYSTEM_USER";
+            return tokenInfo;
+        }
+
+        // Fallback to OAuth token from database
+        logger.info("Using Instagram OAuth token from database");
+        Optional<String> token = credentialService.getDecryptedToken(organizationId, SocialMediaCredential.Platform.INSTAGRAM);
+        Optional<String> accountId = credentialService.getDecryptedPageId(organizationId, SocialMediaCredential.Platform.INSTAGRAM);
+
+        tokenInfo.token = token.orElse(null);
+        tokenInfo.accountId = accountId.orElse(null);
+        tokenInfo.tokenType = "USER_TOKEN";
+
+        return tokenInfo;
+    }
+
+    /**
+     * Helper class to hold token and account ID together
+     */
+    private static class TokenInfo {
+        String token;
+        String accountId;
+        String tokenType;
     }
 }

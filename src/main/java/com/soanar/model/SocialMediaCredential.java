@@ -23,6 +23,10 @@ public class SocialMediaCredential {
     @Column(nullable = false)
     private Platform platform; // FACEBOOK, INSTAGRAM
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "token_type", nullable = false)
+    private TokenType tokenType = TokenType.USER_TOKEN; // USER_TOKEN (OAuth) or SYSTEM_USER_TOKEN (Business Portfolio)
+
     @Column(name = "page_id", nullable = false, length = 500)
     private String pageId; // Encrypted page ID
 
@@ -60,6 +64,9 @@ public class SocialMediaCredential {
     public Platform getPlatform() { return platform; }
     public void setPlatform(Platform platform) { this.platform = platform; }
 
+    public TokenType getTokenType() { return tokenType; }
+    public void setTokenType(TokenType tokenType) { this.tokenType = tokenType; }
+
     public String getPageId() { return pageId; }
     public void setPageId(String pageId) { this.pageId = pageId; }
 
@@ -80,5 +87,10 @@ public class SocialMediaCredential {
 
     public enum Platform {
         FACEBOOK, INSTAGRAM
+    }
+
+    public enum TokenType {
+        USER_TOKEN,        // Personal OAuth token (expires, requires refresh)
+        SYSTEM_USER_TOKEN  // Meta Business System User token (long-lived, 90+ days)
     }
 }

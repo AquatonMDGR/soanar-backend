@@ -3,7 +3,6 @@ package com.soanar.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soanar.model.User;
 import com.soanar.service.AnnouncementService;
-import com.soanar.service.CrosspostService;
 import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,9 +34,6 @@ class AnnouncementControllerTest {
     @Mock
     private JwtUtil jwtUtil;
 
-    @Mock
-    private CrosspostService crosspostService;
-
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -46,7 +42,6 @@ class AnnouncementControllerTest {
                 announcementService,
                 userService,
                 jwtUtil,
-                crosspostService,
                 new ObjectMapper()
         );
 

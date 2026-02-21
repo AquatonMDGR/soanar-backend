@@ -1,10 +1,8 @@
 package com.soanar.controller;
 
-import com.soanar.dto.CrosspostRequest;
 import com.soanar.model.Announcement;
 import com.soanar.model.User;
 import com.soanar.service.AnnouncementService;
-import com.soanar.service.CrosspostService;
 import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,18 +26,15 @@ public class AnnouncementController {
     private final AnnouncementService announcementService;
     private final UserService userService;
     private final JwtUtil jwtUtil;
-    private final CrosspostService crosspostService;
     private final ObjectMapper objectMapper;
 
     public AnnouncementController(AnnouncementService announcementService, 
                                    UserService userService,
                                    JwtUtil jwtUtil,
-                                   CrosspostService crosspostService,
                                    ObjectMapper objectMapper) {
         this.announcementService = announcementService;
         this.userService = userService;
         this.jwtUtil = jwtUtil;
-        this.crosspostService = crosspostService;
         this.objectMapper = objectMapper;
     }
 
@@ -235,124 +230,6 @@ public class AnnouncementController {
             return ResponseEntity.ok(Map.of("message", "Announcement deleted successfully"));
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * Crosspost an announcement to Facebook and/or Instagram
-     * POST /api/announcements/{id}/crosspost
-     */
-    @PostMapping(value = "/{id}/crosspost", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> crosspost(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long id,
-            @RequestPart(value = "file", required = false) MultipartFile file,
-            @RequestPart(value = "files", required = false) List<MultipartFile> files,
-            @RequestPart(value = "crosspostRequest", required = false) String crosspostRequestJson) {
-
-        try {
-            String token = authHeader.replace("Bearer ", "");
-            String role = jwtUtil.extractRole(token);
-            String email = jwtUtil.extractEmail(token);
-
-            // Only Student Organization, OSAS, or Academic can crosspost
-            Announcement announcement = announcementService.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Announcement not found"));
-
-            boolean isAuthorized = "Student Organization".equals(role)
-                    || "OSAS".equals(role)
-                    || "Academic".equals(role);
-
-            if (!isAuthorized) {
-                return ResponseEntity.status(403).body(Map.of("error", "Not authorized to crosspost"));
-            }
-
-            boolean isPrivileged = "OSAS".equals(role) || "Academic".equals(role);
-            String posterEmail = announcement.getPostedBy() != null ? announcement.getPostedBy().getSchoolEmail() : null;
-            boolean isOwner = posterEmail != null && posterEmail.equalsIgnoreCase(email);
-
-            if (!isPrivileged && !isOwner) {
-                return ResponseEntity.status(403).body(Map.of("error", "You can only crosspost your own announcements"));
-            }
-
-            if (!"APPROVED".equals(announcement.getStatus()) && !"PUBLISHED".equals(announcement.getStatus())) {
-                return ResponseEntity.status(400).body(Map.of("error", "Only approved or published announcements can be crossposted"));
-            }
-
-            CrosspostRequest resolvedRequest = null;
-            if (crosspostRequestJson != null && !crosspostRequestJson.isBlank()) {
-                resolvedRequest = objectMapper.readValue(crosspostRequestJson, CrosspostRequest.class);
-            }
-
-            if (resolvedRequest == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Missing crosspost request"));
-            }
-
-            boolean facebookEnabled = resolvedRequest.getFacebook() != null && Boolean.TRUE.equals(resolvedRequest.getFacebook().getEnabled());
-            boolean instagramEnabled = resolvedRequest.getInstagram() != null && Boolean.TRUE.equals(resolvedRequest.getInstagram().getEnabled());
-            if (!facebookEnabled && !instagramEnabled) {
-                return ResponseEntity.badRequest().body(Map.of("error", "At least one platform must be enabled"));
-            }
-
-            List<MultipartFile> images = new ArrayList<>();
-            if (files != null) {
-                for (MultipartFile image : files) {
-                    if (image != null && !image.isEmpty()) {
-                        images.add(image);
-                    }
-                }
-            }
-            if (file != null && !file.isEmpty()) {
-                images.add(file);
-            }
-
-            // Crosspost to selected platforms (user-scoped)
-            UUID organizationId = UUID.nameUUIDFromBytes(email.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
-            crosspostService.crosspostAnnouncement(announcement, resolvedRequest, images, organizationId);
-
-            return ResponseEntity.ok(Map.of(
-                    "message", "Crossposting initiated",
-                    "announcementId", id
-            ));
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * Get crossposting status for an announcement
-     * GET /api/announcements/{id}/crosspost-status
-     */
-    @GetMapping("/{id}/crosspost-status")
-    public ResponseEntity<?> getCrosspostStatus(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long id) {
-
-        try {
-            String token = authHeader.replace("Bearer ", "");
-            String role = jwtUtil.extractRole(token);
-            String email = jwtUtil.extractEmail(token);
-
-            Announcement announcement = announcementService.findById(id)
-                .orElseThrow(() -> new RuntimeException("Announcement not found"));
-
-            boolean isPrivileged = "OSAS".equals(role) || "Academic".equals(role) || "Super Admin".equals(role);
-            String posterEmail = announcement.getPostedBy() != null ? announcement.getPostedBy().getSchoolEmail() : null;
-            boolean isOwner = posterEmail != null && posterEmail.equalsIgnoreCase(email);
-
-            if (!isPrivileged && !isOwner) {
-            return ResponseEntity.status(403).body(Map.of("error", "Not authorized to view crosspost status"));
-            }
-
-            List<?> posts = crosspostService.getPostsForAnnouncement(id);
-            return ResponseEntity.ok(Map.of(
-                    "announcementId", id,
-                    "crosspostStatus", posts
-            ));
-        } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
