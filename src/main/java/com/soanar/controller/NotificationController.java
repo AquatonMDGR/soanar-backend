@@ -60,7 +60,9 @@ public class NotificationController {
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+            System.err.println("Error in getNotifications: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "type", e.getClass().getSimpleName()));
         }
     }
 

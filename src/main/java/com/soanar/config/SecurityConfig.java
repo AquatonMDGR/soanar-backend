@@ -48,7 +48,8 @@ public class SecurityConfig {
                     "/api/db/**",
                     "/api/auth/oauth/callback",
                     "/api/announcements",
-                    "/api/announcements/public/**"  // Public access for AddToAny sharing
+                    "/api/announcements/public/**",  // Public access for AddToAny sharing
+                    "/share/**"  // Public share endpoint with Open Graph meta tags
                 ).permitAll()
                 .anyRequest().authenticated()
             )
