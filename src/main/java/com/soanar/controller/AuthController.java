@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
 import com.soanar.service.UserService;
+import com.soanar.service.OrganizationSettingsService;
 import com.soanar.util.JwtUtil;
 
 @RestController
@@ -21,10 +22,12 @@ import com.soanar.util.JwtUtil;
 public class AuthController {
 
     private final UserService userService;
+    private final OrganizationSettingsService organizationSettingsService;
     private final JwtUtil jwtUtil;
 
-    public AuthController(UserService userService, JwtUtil jwtUtil) {
+    public AuthController(UserService userService, OrganizationSettingsService organizationSettingsService, JwtUtil jwtUtil) {
         this.userService = userService;
+        this.organizationSettingsService = organizationSettingsService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -67,12 +70,14 @@ public class AuthController {
 
             // Generate JWT
             String token = jwtUtil.generateToken(email, role);
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
 
             return ResponseEntity.ok(Map.of(
                 "token", token,
                 "email", email,
                 "role", role,
-                "name", name
+                "name", name,
+                "organizationId", organizationId
             ));
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid Google token: " + e.getMessage()));
@@ -90,10 +95,12 @@ public class AuthController {
             String token = authHeader.replace("Bearer ", "");
             String email = jwtUtil.extractEmail(token);
             String role = jwtUtil.extractRole(token);
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
 
             return ResponseEntity.ok(Map.of(
                 "email", email,
-                "role", role
+                "role", role,
+                "organizationId", organizationId
             ));
         } catch (Exception e) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));

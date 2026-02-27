@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface OrganizationSettingsRepository extends JpaRepository<OrganizationSettings, Long> {
     Optional<OrganizationSettings> findByOrganizationId(String organizationId);
+    Optional<OrganizationSettings> findTopByOrderByIdAsc();
 }

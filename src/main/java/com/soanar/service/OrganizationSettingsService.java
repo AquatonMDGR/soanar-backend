@@ -12,11 +12,19 @@ import java.util.Optional;
 @Service
 public class OrganizationSettingsService {
 
+    private static final String DEFAULT_ORGANIZATION_ID = "default-org";
+
     @Autowired
     private OrganizationSettingsRepository settingsRepository;
 
     public Optional<OrganizationSettings> getSettingsByOrganizationId(String organizationId) {
         return settingsRepository.findByOrganizationId(organizationId);
+    }
+
+    public String resolveDefaultOrganizationId() {
+        return settingsRepository.findTopByOrderByIdAsc()
+            .map(OrganizationSettings::getOrganizationId)
+            .orElse(DEFAULT_ORGANIZATION_ID);
     }
 
     @Transactional
