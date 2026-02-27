@@ -2,8 +2,11 @@ package com.soanar.controller;
 
 import com.soanar.model.Announcement;
 import com.soanar.model.User;
+import com.soanar.model.DistributionGroup;
+import com.soanar.dto.TargetingRequest;
 import com.soanar.service.AnnouncementService;
 import com.soanar.service.UserService;
+import com.soanar.repository.DistributionGroupRepository;
 import com.soanar.util.JwtUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.UUID;
 
 @RestController
@@ -27,15 +31,18 @@ public class AnnouncementController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final ObjectMapper objectMapper;
+    private final DistributionGroupRepository distributionGroupRepository;
 
     public AnnouncementController(AnnouncementService announcementService, 
                                    UserService userService,
                                    JwtUtil jwtUtil,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper,
+                                   DistributionGroupRepository distributionGroupRepository) {
         this.announcementService = announcementService;
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.objectMapper = objectMapper;
+        this.distributionGroupRepository = distributionGroupRepository;
     }
 
     @GetMapping
@@ -85,7 +92,8 @@ public class AnnouncementController {
             @RequestParam("title") String title,
             @RequestParam("description") String description,
             @RequestParam(value = "startDate", required = false) String startDate,
-            @RequestParam(value = "endDate", required = false) String endDate) {
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "targeting", required = false) String targeting) {
         
         try {
             String token = authHeader.replace("Bearer ", "");
@@ -127,6 +135,18 @@ public class AnnouncementController {
             }
             if (endDate != null && !endDate.isBlank()) {
                 announcement.setEndDate(java.time.LocalDate.parse(endDate));
+            }
+
+            if (targeting != null && !targeting.isBlank()) {
+                TargetingRequest targetingRequest = objectMapper.readValue(targeting, TargetingRequest.class);
+                announcement.setTargetYearLevels(targetingRequest.getYearLevels());
+                announcement.setTargetSchools(targetingRequest.getSchools());
+                announcement.setTargetManualEmails(targetingRequest.getManualEmails());
+
+                if (targetingRequest.getDistributionGroupIds() != null && !targetingRequest.getDistributionGroupIds().isEmpty()) {
+                    List<DistributionGroup> groups = distributionGroupRepository.findAllById(targetingRequest.getDistributionGroupIds());
+                    announcement.setDistributionGroups(new HashSet<>(groups));
+                }
             }
             
             Announcement created = announcementService.create(announcement, poster);

@@ -39,14 +39,7 @@ public class NotificationController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String userEmail = jwtUtil.extractEmail(token);
-            
-            // Legacy support: return list if page=0 and size=20
-            if (page == 0 && size == 20) {
-                List<Notification> notifications = notificationService.getNotificationsForUser(userEmail);
-                return ResponseEntity.ok(notifications);
-            }
-            
-            // Phase 6: paginated response
+
             var user = userService.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
             
@@ -57,6 +50,7 @@ public class NotificationController {
             response.put("currentPage", notifications.getNumber());
             response.put("totalPages", notifications.getTotalPages());
             response.put("totalItems", notifications.getTotalElements());
+            response.put("pageSize", notifications.getSize());
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {

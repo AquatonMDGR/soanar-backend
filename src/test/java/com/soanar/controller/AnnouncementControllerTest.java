@@ -1,6 +1,7 @@
 package com.soanar.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.soanar.repository.DistributionGroupRepository;
 import com.soanar.model.User;
 import com.soanar.service.AnnouncementService;
 import com.soanar.service.UserService;
@@ -34,6 +35,9 @@ class AnnouncementControllerTest {
     @Mock
     private JwtUtil jwtUtil;
 
+    @Mock
+    private DistributionGroupRepository distributionGroupRepository;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -42,7 +46,8 @@ class AnnouncementControllerTest {
                 announcementService,
                 userService,
                 jwtUtil,
-                new ObjectMapper()
+            new ObjectMapper(),
+            distributionGroupRepository
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();

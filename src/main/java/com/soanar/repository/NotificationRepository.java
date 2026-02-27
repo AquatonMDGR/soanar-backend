@@ -26,15 +26,24 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     // Phase 6 enhancements
     Page<Notification> findByUserOrderByCreatedAtDesc(User user, Pageable pageable);
     Page<Notification> findByRecipientEmailOrderByCreatedAtDesc(String email, Pageable pageable);
+
+    @Query("SELECT n FROM Notification n WHERE n.user = :user OR n.recipientEmail = :email ORDER BY n.createdAt DESC")
+    Page<Notification> findByUserOrRecipientEmailOrderByCreatedAtDesc(@Param("user") User user, @Param("email") String email, Pageable pageable);
     
     @Query("SELECT n FROM Notification n WHERE n.user = ?1 AND n.readAt IS NULL ORDER BY n.createdAt DESC")
     List<Notification> findUnreadByUser(User user);
+
+    @Query("SELECT n FROM Notification n WHERE (n.user = :user OR n.recipientEmail = :email) AND n.readAt IS NULL ORDER BY n.createdAt DESC")
+    List<Notification> findUnreadByUserOrEmail(@Param("user") User user, @Param("email") String email);
     
     @Query("SELECT n FROM Notification n WHERE n.recipientEmail = ?1 AND n.readAt IS NULL ORDER BY n.createdAt DESC")
     List<Notification> findUnreadByEmail(String email);
     
     @Query("SELECT COUNT(n) FROM Notification n WHERE n.user = ?1 AND n.readAt IS NULL")
     long countUnreadByUser(User user);
+
+    @Query("SELECT COUNT(n) FROM Notification n WHERE (n.user = :user OR n.recipientEmail = :email) AND n.readAt IS NULL")
+    long countUnreadByUserOrEmail(@Param("user") User user, @Param("email") String email);
     
     @Query("SELECT COUNT(n) FROM Notification n WHERE n.recipientEmail = ?1 AND n.readAt IS NULL")
     long countUnreadByEmail(String email);

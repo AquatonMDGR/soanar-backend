@@ -20,6 +20,12 @@ public class User {
     @Column(name = "name")
     private String name;
 
+    @Column(name = "year_level")
+    private String yearLevel;
+
+    @Column(name = "school")
+    private String school;
+
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
@@ -42,6 +48,12 @@ public class User {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public String getYearLevel() { return yearLevel; }
+    public void setYearLevel(String yearLevel) { this.yearLevel = yearLevel; }
+
+    public String getSchool() { return school; }
+    public void setSchool(String school) { this.school = school; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

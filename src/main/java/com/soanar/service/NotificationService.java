@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,22 +32,31 @@ public class NotificationService {
     private final DistributionGroupMemberRepository distributionGroupMemberRepository;
     private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final EmailService emailService;
+    private final RecipientResolverService recipientResolverService;
 
     public NotificationService(NotificationRepository notificationRepository, 
                                UserRepository userRepository,
                                DistributionGroupMemberRepository distributionGroupMemberRepository,
                                NotificationPreferenceRepository notificationPreferenceRepository,
-                               EmailService emailService) {
+                               EmailService emailService,
+                               RecipientResolverService recipientResolverService) {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.distributionGroupMemberRepository = distributionGroupMemberRepository;
         this.notificationPreferenceRepository = notificationPreferenceRepository;
         this.emailService = emailService;
+        this.recipientResolverService = recipientResolverService;
     }
 
     @Transactional
     public void createNotification(Announcement announcement, String recipientEmail, String type, String title, String message) {
         Notification notification = new Notification(announcement, recipientEmail, type, title, message);
+        if (announcement != null && announcement.getId() != null) {
+            notification.setActionUrl("/announcement/" + announcement.getId());
+            notification.setEntityType("ANNOUNCEMENT");
+            notification.setEntityId(announcement.getId());
+        }
+        userRepository.findBySchoolEmail(recipientEmail).ifPresent(notification::setUser);
         notificationRepository.save(notification);
     }
 
@@ -55,7 +65,18 @@ public class NotificationService {
         Notification notification = new Notification();
         notification.setAnnouncement(announcement);
         notification.setRecipientEmail(recipientEmail);
+        notification.setType("announcement");
+        if (announcement != null) {
+            notification.setTitle("New Announcement: " + announcement.getTitle());
+            notification.setBody(announcement.getDescription());
+        }
+        if (announcement != null && announcement.getId() != null) {
+            notification.setActionUrl("/announcement/" + announcement.getId());
+            notification.setEntityType("ANNOUNCEMENT");
+            notification.setEntityId(announcement.getId());
+        }
         notification.setCreatedAt(Instant.now());
+        userRepository.findBySchoolEmail(recipientEmail).ifPresent(notification::setUser);
         notificationRepository.save(notification);
     }
 
@@ -89,27 +110,22 @@ public class NotificationService {
      */
     @Transactional
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
-        List<User> students = userRepository.findByRole("Student");
-        List<String> studentEmails = students.stream()
-                .map(User::getSchoolEmail)
-                .collect(Collectors.toList());
-        
-        // Create in-app notifications
-        for (User student : students) {
+        Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
+
+        for (String email : recipientEmails) {
             createNotification(
                 announcement,
-                student.getSchoolEmail(),
+                email,
                 "announcement",
                 "New Announcement: " + announcement.getTitle(),
                 announcement.getDescription()
             );
         }
-        
-        // Send emails to all students (HTML, include image if present)
-        if (!studentEmails.isEmpty()) {
+
+        if (!recipientEmails.isEmpty()) {
             String subject = "New Announcement: " + announcement.getTitle();
             String html = buildEmailHtmlBody(announcement);
-            emailService.sendTargetedEmail(studentEmails, subject, html);
+            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
         }
     }
     
@@ -119,39 +135,24 @@ public class NotificationService {
      */
     @Transactional
     public void notifyDistributionGroupMembers(Announcement announcement) {
-        if (announcement.getDistributionGroups() == null || announcement.getDistributionGroups().isEmpty()) {
-            System.out.println("No distribution groups specified for announcement: " + announcement.getId());
-            return;
+        Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
+
+        for (String email : recipientEmails) {
+            createNotification(
+                announcement,
+                email,
+                "announcement",
+                "New Announcement: " + announcement.getTitle(),
+                announcement.getDescription()
+            );
         }
-        
-        List<String> recipientEmails = new ArrayList<>();
-        
-        // Get all members from all distribution groups
-        for (DistributionGroup group : announcement.getDistributionGroups()) {
-            List<DistributionGroupMember> members = distributionGroupMemberRepository.findByGroupId(group.getId());
-            for (DistributionGroupMember member : members) {
-                if (!recipientEmails.contains(member.getStudentEmail())) {
-                    recipientEmails.add(member.getStudentEmail());
-                    
-                    // Create in-app notification
-                    createNotification(
-                        announcement,
-                        member.getStudentEmail(),
-                        "announcement",
-                        "New Announcement: " + announcement.getTitle(),
-                        announcement.getDescription()
-                    );
-                }
-            }
-        }
-        
-        // Send emails to distribution group members (HTML)
+
         if (!recipientEmails.isEmpty()) {
             String subject = "New Announcement: " + announcement.getTitle();
             String html = buildEmailHtmlBody(announcement);
-            emailService.sendTargetedEmail(recipientEmails, subject, html);
+            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
         } else {
-            System.out.println("No recipients found in distribution groups for announcement: " + announcement.getId());
+            System.out.println("No recipients found for announcement: " + announcement.getId());
         }
     }
     
@@ -361,21 +362,21 @@ public class NotificationService {
      */
     public Page<Notification> getNotificationsForUser(User user, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return notificationRepository.findByUserOrderByCreatedAtDesc(user, pageable);
+        return notificationRepository.findByUserOrRecipientEmailOrderByCreatedAtDesc(user, user.getSchoolEmail(), pageable);
     }
     
     /**
      * Get unread notifications for a user
      */
     public List<Notification> getUnreadNotifications(User user) {
-        return notificationRepository.findUnreadByUser(user);
+        return notificationRepository.findUnreadByUserOrEmail(user, user.getSchoolEmail());
     }
     
     /**
      * Get unread notification count
      */
     public long getUnreadCount(User user) {
-        return notificationRepository.countUnreadByUser(user);
+        return notificationRepository.countUnreadByUserOrEmail(user, user.getSchoolEmail());
     }
     
     /**

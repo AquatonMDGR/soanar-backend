@@ -17,6 +17,7 @@
 - ❌ Legacy crossposting artifacts remain (`CrossPostedAnnouncement`, repository, frontend crosspost calls).
 - ❌ Targeting payload is not yet implemented end-to-end (year/school/groups/manual emails).
 - ❌ Notification API contract cleanup is incomplete (mixed legacy/new patterns still active).
+- ❌ Notification retrieval mismatch exists: notifications created via recipient-email path may not appear in page/modal endpoints.
 
 ## Teammate Assignment Queue (Immediate)
 
@@ -125,6 +126,7 @@ Complete backend cleanup after crossposting removal and implement real recipient
 - [ ] BE-031 Keep backward-compatible aliases only if currently consumed.
 - [ ] BE-032 Normalize error payload format (`{ error, message, code? }`).
 - [ ] BE-033 Confirm read/unread count endpoints align with frontend polling.
+- [ ] BE-034 Ensure notification fetch/count queries include both `user_id` and legacy `recipient_email` records.
 
 **Acceptance**
 - Frontend no longer gets 400 errors due to contract mismatch.
@@ -134,6 +136,17 @@ Complete backend cleanup after crossposting removal and implement real recipient
 - [ ] BE-041 Smoke test: login, feed fetch, create announcement, notifications, public share endpoint.
 - [ ] BE-042 Produce final endpoint matrix for frontend team.
 - [ ] BE-043 Update backend docs (`README` or `docs/API_REFERENCE.md`) with changed contracts.
+
+## Deferred Cleanup TODO (Run After Required Functionality Is Fully Implemented)
+
+- [ ] CLN-BE-001 Remove `/api/announcements/{id}/debug-images` or guard it strictly behind dev profile.
+- [ ] CLN-BE-002 Remove or deprecate legacy notification endpoint aliases once frontend is fully migrated.
+- [ ] CLN-BE-003 Normalize notification error payload shape across all endpoints.
+- [ ] CLN-BE-004 Remove residual crossposting artifacts only after confirming no active references in frontend/backend.
+- [ ] CLN-BE-005 Update API reference docs with finalized announcement-targeting and notification contracts.
+- [ ] CLN-BE-006 Remove unused social/crossposting backend artifacts if still out of scope (`SocialMediaCredential`, `SocialMediaPost`, crosspost repository/service/controller paths).
+- [ ] CLN-BE-007 Remove/trim organization social toggle fields (`facebookEnabled`, `instagramEnabled`) if no longer part of final product.
+- [ ] CLN-BE-008 Standardize notification payload fields (`actionUrl`, `entityType`, `entityId`) so frontend redirects are deterministic.
 
 ## Risks and Mitigations
 - **Risk**: Removing legacy entities may break migrations/history.

@@ -66,6 +66,21 @@ public class Announcement {
     @Column(name = "end_date")
     private LocalDate endDate;
 
+    @Column(name = "target_year_levels", columnDefinition = "jsonb DEFAULT '[]'::jsonb")
+    @Type(JsonType.class)
+    @JsonProperty("targetYearLevels")
+    private List<String> targetYearLevels = new ArrayList<>();
+
+    @Column(name = "target_schools", columnDefinition = "jsonb DEFAULT '[]'::jsonb")
+    @Type(JsonType.class)
+    @JsonProperty("targetSchools")
+    private List<String> targetSchools = new ArrayList<>();
+
+    @Column(name = "target_manual_emails", columnDefinition = "jsonb DEFAULT '[]'::jsonb")
+    @Type(JsonType.class)
+    @JsonProperty("targetManualEmails")
+    private List<String> targetManualEmails = new ArrayList<>();
+
     @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
@@ -118,6 +133,39 @@ public class Announcement {
 
     public LocalDate getEndDate() { return endDate; }
     public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+
+    public List<String> getTargetYearLevels() {
+        if (this.targetYearLevels == null) {
+            this.targetYearLevels = new ArrayList<>();
+        }
+        return targetYearLevels;
+    }
+
+    public void setTargetYearLevels(List<String> targetYearLevels) {
+        this.targetYearLevels = targetYearLevels != null ? targetYearLevels : new ArrayList<>();
+    }
+
+    public List<String> getTargetSchools() {
+        if (this.targetSchools == null) {
+            this.targetSchools = new ArrayList<>();
+        }
+        return targetSchools;
+    }
+
+    public void setTargetSchools(List<String> targetSchools) {
+        this.targetSchools = targetSchools != null ? targetSchools : new ArrayList<>();
+    }
+
+    public List<String> getTargetManualEmails() {
+        if (this.targetManualEmails == null) {
+            this.targetManualEmails = new ArrayList<>();
+        }
+        return targetManualEmails;
+    }
+
+    public void setTargetManualEmails(List<String> targetManualEmails) {
+        this.targetManualEmails = targetManualEmails != null ? targetManualEmails : new ArrayList<>();
+    }
 
     public Set<DistributionGroup> getDistributionGroups() { return distributionGroups; }
     public void setDistributionGroups(Set<DistributionGroup> distributionGroups) {
