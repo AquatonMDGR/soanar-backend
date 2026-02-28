@@ -3,6 +3,7 @@ package com.soanar.controller;
 import com.soanar.model.DistributionGroup;
 import com.soanar.model.DistributionGroupMember;
 import com.soanar.model.User;
+import com.soanar.service.OrganizationSettingsService;
 import com.soanar.service.DistributionGroupService;
 import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
@@ -20,13 +21,16 @@ public class DistributionGroupController {
 
     private final DistributionGroupService distributionGroupService;
     private final UserService userService;
+    private final OrganizationSettingsService organizationSettingsService;
     private final JwtUtil jwtUtil;
 
     public DistributionGroupController(DistributionGroupService distributionGroupService,
                                        UserService userService,
+                                       OrganizationSettingsService organizationSettingsService,
                                        JwtUtil jwtUtil) {
         this.distributionGroupService = distributionGroupService;
         this.userService = userService;
+        this.organizationSettingsService = organizationSettingsService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -59,15 +63,21 @@ public class DistributionGroupController {
             String name = (String) payload.get("name");
             String description = (String) payload.get("description");
 
-            if (organizationId == null || name == null) {
-                return ResponseEntity.badRequest().body(Map.of("error", "organizationId and name are required"));
+            if (name == null || name.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "name is required"));
+            }
+
+            if (organizationId == null || organizationId.isBlank()) {
+                organizationId = organizationSettingsService.resolveDefaultOrganizationId();
             }
 
             User creator = userService.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
+                    .orElseThrow(() -> new IllegalArgumentException("User not found for token email"));
 
             DistributionGroup group = distributionGroupService.createGroup(organizationId, name, description, creator);
             return ResponseEntity.ok(group);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
