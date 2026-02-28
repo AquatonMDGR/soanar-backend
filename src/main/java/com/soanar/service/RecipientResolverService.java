@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 public class RecipientResolverService {
@@ -117,10 +116,9 @@ public class RecipientResolverService {
 
         boolean hasYear = normalizedYearLevels != null && !normalizedYearLevels.isEmpty();
         boolean hasSchool = schools != null && !schools.isEmpty();
-        boolean hasGroups = announcement.getDistributionGroups() != null && !announcement.getDistributionGroups().isEmpty();
         boolean hasManual = manualEmails != null && !manualEmails.isEmpty();
 
-        if (!hasYear && !hasSchool && !hasGroups && !hasManual) {
+        if (!hasYear && !hasSchool && !hasManual) {
             return true;
         }
 
@@ -135,18 +133,7 @@ public class RecipientResolverService {
                 .map(this::normalizeEmail)
                 .anyMatch(email -> email.equals(userEmail));
 
-        boolean groupMatch = false;
-        if (hasGroups && userEmail != null) {
-            Set<String> groupEmails = announcement.getDistributionGroups().stream()
-                    .flatMap(group -> distributionGroupMemberRepository.findByGroupId(group.getId()).stream())
-                    .map(DistributionGroupMember::getStudentEmail)
-                    .map(this::normalizeEmail)
-                    .filter(email -> !email.isEmpty())
-                    .collect(Collectors.toSet());
-            groupMatch = groupEmails.contains(userEmail);
-        }
-
-        return yearSchoolMatch || manualMatch || groupMatch;
+        return yearSchoolMatch || manualMatch;
     }
 
     private void addIfValid(Set<String> emails, String email) {
