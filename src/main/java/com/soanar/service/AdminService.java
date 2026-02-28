@@ -1,6 +1,8 @@
 package com.soanar.service;
 
+import com.soanar.model.AuditLog;
 import com.soanar.model.User;
+import com.soanar.repository.AuditLogRepository;
 import com.soanar.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,9 +13,11 @@ import java.util.List;
 public class AdminService {
 
     private final UserRepository userRepository;
+    private final AuditLogRepository auditLogRepository;
 
-    public AdminService(UserRepository userRepository) {
+    public AdminService(UserRepository userRepository, AuditLogRepository auditLogRepository) {
         this.userRepository = userRepository;
+        this.auditLogRepository = auditLogRepository;
     }
 
     public List<User> getAllUsers() {
@@ -28,7 +32,7 @@ public class AdminService {
         userRepository.save(user);
     }
 
-    public List<String> getAuditLogs() {
-        return List.of("Audit logs placeholder");
+    public List<AuditLog> getAuditLogs() {
+        return auditLogRepository.findTop100ByOrderByTimestampDesc();
     }
 }

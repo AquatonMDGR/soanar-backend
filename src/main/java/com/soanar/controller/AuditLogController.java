@@ -42,9 +42,9 @@ public class AuditLogController {
             var user = userService.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
             
-            // Only OSAS can view audit logs
-            if (!"OSAS".equals(user.getRole())) {
-                return ResponseEntity.status(403).body("Only OSAS users can view audit logs");
+            // Only OSAS or Super Admin can view audit logs
+            if (!"OSAS".equals(user.getRole()) && !"Super Admin".equals(user.getRole())) {
+                return ResponseEntity.status(403).body("Only OSAS or Super Admin users can view audit logs");
             }
             
             Page<AuditLog> logs = auditLogService.getLogsByOrganization(organizationId, page, size);
@@ -103,9 +103,9 @@ public class AuditLogController {
             var user = userService.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
             
-            // Only OSAS can view entity audit logs
-            if (!"OSAS".equals(user.getRole())) {
-                return ResponseEntity.status(403).body("Only OSAS users can view audit logs");
+            // Only OSAS or Super Admin can view entity audit logs
+            if (!"OSAS".equals(user.getRole()) && !"Super Admin".equals(user.getRole())) {
+                return ResponseEntity.status(403).body("Only OSAS or Super Admin users can view audit logs");
             }
             
             Page<AuditLog> logs = auditLogService.getLogsByEntity(entityType, entityId, page, size);
@@ -135,9 +135,9 @@ public class AuditLogController {
             var user = userService.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User not found"));
             
-            // Only OSAS can view analytics
-            if (!"OSAS".equals(user.getRole())) {
-                return ResponseEntity.status(403).body("Only OSAS users can view analytics");
+            // Only OSAS or Super Admin can view analytics
+            if (!"OSAS".equals(user.getRole()) && !"Super Admin".equals(user.getRole())) {
+                return ResponseEntity.status(403).body("Only OSAS or Super Admin users can view analytics");
             }
             
             Instant startDate = Instant.now().minus(days, ChronoUnit.DAYS);

@@ -18,4 +18,5 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     Page<AuditLog> findByActionType(String actionType, Pageable pageable);
     Page<AuditLog> findByTimestampBetween(Instant start, Instant end, Pageable pageable);
     List<AuditLog> findByOrganizationIdAndTimestampBetween(String organizationId, Instant start, Instant end);
+    List<AuditLog> findTop100ByOrderByTimestampDesc();
 }

@@ -94,13 +94,6 @@ public class NotificationController {
         }
     }
 
-    @PostMapping("/mark-read")
-    public ResponseEntity<?> markAsRead(@RequestBody Map<String, Long> body) {
-        Long notificationId = body.get("notificationId");
-        notificationService.markAsRead(notificationId);
-        return ResponseEntity.ok(Map.of("message", "Notification marked as read"));
-    }
-
     @PostMapping("/{notificationId}/read")
     public ResponseEntity<?> markAsReadById(
             @PathVariable Long notificationId,
@@ -112,14 +105,6 @@ public class NotificationController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
-    }
-
-    @PostMapping("/mark-all-read")
-    public ResponseEntity<?> markAllAsRead(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-        String email = jwtUtil.extractEmail(token);
-        notificationService.markAllAsRead(email);
-        return ResponseEntity.ok(Map.of("message", "All notifications marked as read"));
     }
 
     @PostMapping("/read-all")

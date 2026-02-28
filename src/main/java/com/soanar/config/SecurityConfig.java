@@ -45,7 +45,6 @@ public class SecurityConfig {
                     "/index.html",
                     "/error",
                     "/api/login",
-                    "/api/db/**",
                     "/api/auth/oauth/callback",
                     "/api/announcements",
                     "/api/announcements/public/**",  // Public access for AddToAny sharing

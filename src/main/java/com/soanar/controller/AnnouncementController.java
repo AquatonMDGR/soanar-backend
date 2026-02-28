@@ -168,8 +168,8 @@ public class AnnouncementController {
             String role = jwtUtil.extractRole(token);
             String email = jwtUtil.extractEmail(token);
             
-            if (!"OSAS".equals(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));
+            if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS or Super Admin can approve"));
             }
             
             User approver = userService.findByEmail(email)
@@ -203,8 +203,8 @@ public class AnnouncementController {
             String role = jwtUtil.extractRole(token);
             String email = jwtUtil.extractEmail(token);
             
-            if (!"OSAS".equals(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can reject"));
+            if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS or Super Admin can reject"));
             }
             
             User rejector = userService.findByEmail(email)
@@ -281,8 +281,16 @@ public class AnnouncementController {
      * GET /api/announcements/{id}/debug-images
      */
     @GetMapping("/{id}/debug-images")
-    public ResponseEntity<?> debugImages(@PathVariable Long id) {
+    public ResponseEntity<?> debugImages(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader) {
         try {
+            String token = authHeader.replace("Bearer ", "");
+            String role = jwtUtil.extractRole(token);
+            if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS or Super Admin can access debug images"));
+            }
+
             Announcement a = announcementService.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
             
             System.out.println("DEBUG /debug-images: Announcement ID " + id);
