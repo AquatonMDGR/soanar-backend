@@ -11,7 +11,9 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.ArrayList;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class RecipientResolverService {
@@ -32,21 +34,22 @@ public class RecipientResolverService {
         Set<String> recipients = new LinkedHashSet<>();
 
         List<String> yearLevels = announcement.getTargetYearLevels();
+        List<String> normalizedYearLevels = expandYearLevelAliases(yearLevels);
         List<String> schools = announcement.getTargetSchools();
         List<String> manualEmails = announcement.getTargetManualEmails();
 
-        boolean hasYear = yearLevels != null && !yearLevels.isEmpty();
+        boolean hasYear = normalizedYearLevels != null && !normalizedYearLevels.isEmpty();
         boolean hasSchool = schools != null && !schools.isEmpty();
         boolean hasGroups = announcement.getDistributionGroups() != null && !announcement.getDistributionGroups().isEmpty();
         boolean hasManual = manualEmails != null && !manualEmails.isEmpty();
 
         if (hasYear && hasSchool) {
-            for (User user : userRepository.findByRoleAndYearLevelInAndSchoolIn("Student", yearLevels, schools)) {
+            for (User user : userRepository.findByRoleAndYearLevelInAndSchoolIn("Student", normalizedYearLevels, schools)) {
                 addIfValid(recipients, user.getSchoolEmail());
             }
         } else {
             if (hasYear) {
-                for (User user : userRepository.findByRoleAndYearLevelIn("Student", yearLevels)) {
+                for (User user : userRepository.findByRoleAndYearLevelIn("Student", normalizedYearLevels)) {
                     addIfValid(recipients, user.getSchoolEmail());
                 }
             }
@@ -101,6 +104,51 @@ public class RecipientResolverService {
         return resolved;
     }
 
+    public boolean isUserInAudience(User user, Announcement announcement) {
+        if (user == null || announcement == null) {
+            return false;
+        }
+
+        String userEmail = normalizeEmail(user.getSchoolEmail());
+        List<String> yearLevels = announcement.getTargetYearLevels();
+        List<String> normalizedYearLevels = expandYearLevelAliases(yearLevels);
+        List<String> schools = announcement.getTargetSchools();
+        List<String> manualEmails = announcement.getTargetManualEmails();
+
+        boolean hasYear = normalizedYearLevels != null && !normalizedYearLevels.isEmpty();
+        boolean hasSchool = schools != null && !schools.isEmpty();
+        boolean hasGroups = announcement.getDistributionGroups() != null && !announcement.getDistributionGroups().isEmpty();
+        boolean hasManual = manualEmails != null && !manualEmails.isEmpty();
+
+        if (!hasYear && !hasSchool && !hasGroups && !hasManual) {
+            return true;
+        }
+
+        boolean yearSchoolMatch = false;
+        if (hasYear || hasSchool) {
+            boolean yearMatch = !hasYear || valueInList(user.getYearLevel(), normalizedYearLevels);
+            boolean schoolMatch = !hasSchool || valueInList(user.getSchool(), schools);
+            yearSchoolMatch = yearMatch && schoolMatch;
+        }
+
+        boolean manualMatch = hasManual && manualEmails.stream()
+                .map(this::normalizeEmail)
+                .anyMatch(email -> email.equals(userEmail));
+
+        boolean groupMatch = false;
+        if (hasGroups && userEmail != null) {
+            Set<String> groupEmails = announcement.getDistributionGroups().stream()
+                    .flatMap(group -> distributionGroupMemberRepository.findByGroupId(group.getId()).stream())
+                    .map(DistributionGroupMember::getStudentEmail)
+                    .map(this::normalizeEmail)
+                    .filter(email -> !email.isEmpty())
+                    .collect(Collectors.toSet());
+            groupMatch = groupEmails.contains(userEmail);
+        }
+
+        return yearSchoolMatch || manualMatch || groupMatch;
+    }
+
     private void addIfValid(Set<String> emails, String email) {
         if (email == null) {
             return;
@@ -109,5 +157,45 @@ public class RecipientResolverService {
         if (!normalized.isEmpty() && EMAIL_PATTERN.matcher(normalized).matches()) {
             emails.add(normalized);
         }
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null) {
+            return "";
+        }
+        return email.trim().toLowerCase();
+    }
+
+    private boolean valueInList(String value, List<String> allowedValues) {
+        if (value == null || allowedValues == null) {
+            return false;
+        }
+        String normalizedValue = value.trim();
+        return allowedValues.stream().anyMatch(item -> item != null && normalizedValue.equalsIgnoreCase(item.trim()));
+    }
+
+    private List<String> expandYearLevelAliases(List<String> yearLevels) {
+        Set<String> expanded = new LinkedHashSet<>();
+        if (yearLevels == null) {
+            return List.of();
+        }
+
+        for (String yearLevel : yearLevels) {
+            String normalized = normalizeYearLevelBase(yearLevel);
+            if (normalized.isEmpty()) {
+                continue;
+            }
+            expanded.add(normalized);
+            expanded.add(normalized + " Year");
+        }
+
+        return new ArrayList<>(expanded);
+    }
+
+    private String normalizeYearLevelBase(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("(?i)\\s*year$", "").trim();
     }
 }

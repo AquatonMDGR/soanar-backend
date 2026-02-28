@@ -1,7 +1,10 @@
 package com.soanar.service;
 
 import com.soanar.model.Email;
+import com.soanar.model.Announcement;
 import com.soanar.repository.EmailRepository;
+import com.soanar.repository.UserRepository;
+import com.soanar.repository.AnnouncementRepository;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -10,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.core.io.ByteArrayResource;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -21,16 +25,24 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.URI;
 import java.time.Duration;
+import java.util.Arrays;
 
 @Service
 public class EmailService {
 
     private final JavaMailSender mailSender;
     private final EmailRepository emailRepository;
+    private final UserRepository userRepository;
+    private final AnnouncementRepository announcementRepository;
 
-    public EmailService(JavaMailSender mailSender, EmailRepository emailRepository) {
+    public EmailService(JavaMailSender mailSender,
+                        EmailRepository emailRepository,
+                        UserRepository userRepository,
+                        AnnouncementRepository announcementRepository) {
         this.mailSender = mailSender;
         this.emailRepository = emailRepository;
+        this.userRepository = userRepository;
+        this.announcementRepository = announcementRepository;
     }
 
     @Transactional
@@ -118,5 +130,75 @@ public class EmailService {
     @Transactional
     public void sendTermlyNewsletter(List<String> recipients, String subject, String body) {
         sendTargetedEmail(recipients, subject, body);
+    }
+
+    @Transactional
+    public Map<String, Object> forceSendUpcomingTermNewsletter() {
+        LocalDate termStart = getNextTermStart();
+        LocalDate termEnd = termStart.plusMonths(4).minusDays(1);
+
+        List<Announcement> upcoming = announcementRepository.findPublishedInDateRange(
+                Arrays.asList("PUBLISHED", "APPROVED"),
+                termStart,
+                termEnd
+        );
+
+        List<String> recipients = userRepository.findByRole("Student").stream()
+                .map(user -> user.getSchoolEmail())
+                .filter(email -> email != null && !email.isBlank())
+                .distinct()
+                .toList();
+
+        if (!upcoming.isEmpty() && !recipients.isEmpty()) {
+            String subject = "SONAR Upcoming Events for Next Term (" + termStart + " to " + termEnd + ")";
+            String body = buildUpcomingTermNewsletterHtml(upcoming, termStart, termEnd);
+            sendTermlyNewsletter(recipients, subject, body);
+        }
+
+        return Map.of(
+                "termStart", termStart.toString(),
+                "termEnd", termEnd.toString(),
+                "eventsIncluded", upcoming.size(),
+                "recipients", recipients.size(),
+                "sent", !upcoming.isEmpty() && !recipients.isEmpty()
+        );
+    }
+
+    private LocalDate getNextTermStart() {
+        LocalDate today = LocalDate.now();
+        int month = today.getMonthValue();
+        int year = today.getYear();
+
+        int[] termStarts = {1, 5, 9};
+        for (int startMonth : termStarts) {
+            if (startMonth > month) {
+                return LocalDate.of(year, startMonth, 1);
+            }
+        }
+
+        return LocalDate.of(year + 1, 1, 1);
+    }
+
+    private String buildUpcomingTermNewsletterHtml(List<Announcement> upcoming, LocalDate start, LocalDate end) {
+        StringBuilder html = new StringBuilder();
+        html.append("<html><body>");
+        html.append("<h2>Upcoming Events for Next Term</h2>");
+        html.append("<p><strong>Coverage:</strong> ").append(start).append(" to ").append(end).append("</p>");
+        html.append("<ul>");
+
+        for (Announcement announcement : upcoming) {
+            html.append("<li style=\"margin-bottom:12px;\">")
+                .append("<strong>").append(announcement.getTitle()).append("</strong><br/>")
+                .append("Date: ").append(announcement.getStartDate())
+                .append(announcement.getEndDate() != null ? " to " + announcement.getEndDate() : "")
+                .append("<br/>")
+                .append(announcement.getDescription() != null ? announcement.getDescription() : "")
+                .append("</li>");
+        }
+
+        html.append("</ul>");
+        html.append("<p>Best regards,<br/>SONAR</p>");
+        html.append("</body></html>");
+        return html.toString();
     }
 }

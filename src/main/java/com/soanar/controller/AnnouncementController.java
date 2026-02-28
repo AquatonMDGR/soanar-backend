@@ -50,22 +50,20 @@ public class AnnouncementController {
             @RequestParam(required = false) String status,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
-            if ("PUBLISHED".equals(status) || "APPROVED".equals(status)) {
-                return ResponseEntity.ok(announcementService.getPublished());
-            }
-
+            User currentUser = null;
             String role = null;
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.replace("Bearer ", "");
                 String email = jwtUtil.extractEmail(token);
-                // Load current role from database instead of JWT to reflect real-time role changes
-                var user = userService.findByEmail(email);
-                if (user.isPresent()) {
-                    role = user.get().getRole();
-                } else {
-                    // Fallback to JWT role if user not found in database
-                    role = jwtUtil.extractRole(token);
+                currentUser = userService.findByEmail(email).orElse(null);
+                role = currentUser != null ? currentUser.getRole() : jwtUtil.extractRole(token);
+            }
+
+            if ("PUBLISHED".equals(status) || "APPROVED".equals(status)) {
+                if (currentUser != null && "Student".equals(role)) {
+                    return ResponseEntity.ok(announcementService.getPublishedForUser(currentUser));
                 }
+                return ResponseEntity.ok(announcementService.getPublished());
             }
 
             if ("PENDING".equals(status)) {
@@ -77,6 +75,10 @@ public class AnnouncementController {
 
             if ("OSAS".equals(role) || "Academic".equals(role) || "Super Admin".equals(role)) {
                 return ResponseEntity.ok(announcementService.listAll());
+            }
+
+            if (currentUser != null && "Student".equals(role)) {
+                return ResponseEntity.ok(announcementService.getPublishedForUser(currentUser));
             }
 
             return ResponseEntity.ok(announcementService.getPublished());

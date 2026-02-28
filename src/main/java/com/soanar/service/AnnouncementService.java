@@ -14,16 +14,20 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class AnnouncementService {
 
     private final AnnouncementRepository announcementRepository;
     private final NotificationService notificationService;
+    private final RecipientResolverService recipientResolverService;
     
     @Value("${supabase.url}")
     private String supabaseUrl;
@@ -38,9 +42,11 @@ public class AnnouncementService {
     private String mediaOriginBaseUrl;
 
     public AnnouncementService(AnnouncementRepository announcementRepository,
-                                NotificationService notificationService) {
+                                NotificationService notificationService,
+                                RecipientResolverService recipientResolverService) {
         this.announcementRepository = announcementRepository;
         this.notificationService = notificationService;
+        this.recipientResolverService = recipientResolverService;
     }
 
     public List<Announcement> listAll() {
@@ -49,6 +55,14 @@ public class AnnouncementService {
 
     public List<Announcement> getPublished() {
         return announcementRepository.findByStatusIn(java.util.Arrays.asList("PUBLISHED", "APPROVED"));
+    }
+
+    public List<Announcement> getPublishedForUser(User user) {
+        Instant schoolYearStart = getCurrentSchoolYearStartInstant();
+        return getPublished().stream()
+                .filter(announcement -> announcement.getCreatedAt() != null && !announcement.getCreatedAt().isBefore(schoolYearStart))
+                .filter(announcement -> recipientResolverService.isUserInAudience(user, announcement))
+                .collect(Collectors.toList());
     }
 
     public List<Announcement> getPending() {
@@ -291,5 +305,12 @@ public class AnnouncementService {
             return trimmed.substring(0, trimmed.length() - 1);
         }
         return trimmed;
+    }
+
+    private Instant getCurrentSchoolYearStartInstant() {
+        LocalDate now = LocalDate.now();
+        int schoolYearStartYear = now.getMonthValue() >= 6 ? now.getYear() : now.getYear() - 1;
+        LocalDate startDate = LocalDate.of(schoolYearStartYear, 6, 1);
+        return startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
     }
 }

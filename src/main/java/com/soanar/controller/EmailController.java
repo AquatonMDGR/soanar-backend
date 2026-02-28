@@ -51,7 +51,7 @@ public class EmailController {
         String token = authHeader.replace("Bearer ", "");
         String role = jwtUtil.extractRole(token);
         
-        if (!"OSAS".equals(role) && !"Academic".equals(role)) {
+        if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
@@ -61,6 +61,21 @@ public class EmailController {
 
         emailService.sendTermlyNewsletter(recipients, subject, emailBody);
         return ResponseEntity.ok(Map.of("message", "Newsletter sent successfully"));
+    }
+
+    @PostMapping("/send-termly-upcoming")
+    public ResponseEntity<?> forceSendUpcomingTermNewsletter(
+            @RequestHeader("Authorization") String authHeader) {
+
+        String token = authHeader.replace("Bearer ", "");
+        String role = jwtUtil.extractRole(token);
+
+        if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        Map<String, Object> result = emailService.forceSendUpcomingTermNewsletter();
+        return ResponseEntity.ok(result);
     }
 
     private List<String> extractRecipients(Map<String, Object> body) {
