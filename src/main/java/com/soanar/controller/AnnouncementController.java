@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -131,12 +132,21 @@ public class AnnouncementController {
                 }
             }
             
+            LocalDate parsedStartDate = null;
+            LocalDate parsedEndDate = null;
+
             // Map dates if provided
             if (startDate != null && !startDate.isBlank()) {
-                announcement.setStartDate(java.time.LocalDate.parse(startDate));
+                parsedStartDate = LocalDate.parse(startDate);
+                announcement.setStartDate(parsedStartDate);
             }
             if (endDate != null && !endDate.isBlank()) {
-                announcement.setEndDate(java.time.LocalDate.parse(endDate));
+                parsedEndDate = LocalDate.parse(endDate);
+                announcement.setEndDate(parsedEndDate);
+            }
+
+            if (parsedStartDate != null && parsedEndDate != null && parsedStartDate.isAfter(parsedEndDate)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Start date cannot be after end date"));
             }
 
             if (targeting != null && !targeting.isBlank()) {

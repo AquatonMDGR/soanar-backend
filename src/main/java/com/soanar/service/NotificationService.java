@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -108,7 +109,7 @@ public class NotificationService {
      * Notify all students when an announcement is published
      * This is for OSAS and Academic announcements
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
 
@@ -133,7 +134,7 @@ public class NotificationService {
      * Notify distribution group members when a Student Organization publishes
      * Only emails students in the announcement's distribution groups
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyDistributionGroupMembers(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
 
@@ -226,7 +227,7 @@ public class NotificationService {
     /**
      * Notify OSAS when a Student Organization creates an announcement
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyOSASOfNewAnnouncement(Announcement announcement) {
         List<User> osasUsers = userRepository.findByRole("OSAS");
         for (User osasUser : osasUsers) {
@@ -243,7 +244,7 @@ public class NotificationService {
     /**
      * Notify Student Organization when their announcement is approved/rejected
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyApprovalResult(Announcement announcement, boolean approved) {
         if (announcement.getPostedBy() == null) {
             System.err.println("Cannot notify approval result: postedBy is null for announcement " + announcement.getId());
@@ -269,7 +270,7 @@ public class NotificationService {
      * Notify event creator when their event has been successfully created
      * Provides feedback on whether event is published or pending approval
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyEventCreator(Announcement announcement) {
         if (announcement.getPostedBy() == null) {
             System.err.println("Cannot notify event creator: postedBy is null for announcement " + announcement.getId());
