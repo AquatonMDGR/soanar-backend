@@ -360,24 +360,57 @@ public class NotificationService {
     
     /**
      * Get paginated notifications for a user
+     * Filters out approval notifications for Student Organization users (they can't approve)
      */
     public Page<Notification> getNotificationsForUser(User user, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return notificationRepository.findByUserOrRecipientEmailOrderByCreatedAtDesc(user, user.getSchoolEmail(), pageable);
+        Page<Notification> notifications = notificationRepository.findByUserOrRecipientEmailOrderByCreatedAtDesc(user, user.getSchoolEmail(), pageable);
+        
+        // Filter out approval notifications for Student Organization users
+        if ("Student Organization".equals(user.getRole())) {
+            var filtered = notifications.getContent().stream()
+                .filter(n -> !"approval".equals(n.getType()))
+                .toList();
+            return new org.springframework.data.domain.PageImpl<>(filtered, pageable, filtered.size());
+        }
+        
+        return notifications;
     }
     
     /**
      * Get unread notifications for a user
+     * Filters out approval notifications for Student Organization users
      */
     public List<Notification> getUnreadNotifications(User user) {
-        return notificationRepository.findUnreadByUserOrEmail(user, user.getSchoolEmail());
+        List<Notification> unread = notificationRepository.findUnreadByUserOrEmail(user, user.getSchoolEmail());
+        
+        // Filter out approval notifications for Student Organization users
+        if ("Student Organization".equals(user.getRole())) {
+            return unread.stream()
+                .filter(n -> !"approval".equals(n.getType()))
+                .toList();
+        }
+        
+        return unread;
     }
     
     /**
      * Get unread notification count
+     * Excludes approval notifications for Student Organization users
      */
     public long getUnreadCount(User user) {
-        return notificationRepository.countUnreadByUserOrEmail(user, user.getSchoolEmail());
+        long count = notificationRepository.countUnreadByUserOrEmail(user, user.getSchoolEmail());
+        
+        // For Student Organization users, also subtract approval-type unread notifications
+        if ("Student Organization".equals(user.getRole())) {
+            List<Notification> allUnread = notificationRepository.findUnreadByUserOrEmail(user, user.getSchoolEmail());
+            long approvalCount = allUnread.stream()
+                .filter(n -> "approval".equals(n.getType()))
+                .count();
+            return count - approvalCount;
+        }
+        
+        return count;
     }
     
     /**

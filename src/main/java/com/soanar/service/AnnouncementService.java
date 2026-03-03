@@ -103,9 +103,13 @@ public class AnnouncementService {
                 if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
                     // OSAS or Academic can post directly -> email ALL students
                     notificationService.notifyStudentsOfPublishedAnnouncement(saved);
+                    // Notify the creator that their post was published
+                    notificationService.notifyEventCreator(saved);
                 } else if ("Student Organization".equals(posterRole)) {
                     // Student Organization -> notify OSAS for approval (no emails sent yet)
                     notificationService.notifyOSASOfNewAnnouncement(saved);
+                    // Notify the creator that their post is pending approval
+                    notificationService.notifyEventCreator(saved);
                 }
             } catch (Exception notifyError) {
                 System.err.println("Warning: Failed to send notifications for announcement " + saved.getId() + ": " + notifyError.getMessage());
