@@ -86,3 +86,4 @@ specs/**/*-analysis.md
 ### Logs ###
 *.log
 logs/
+.vercel

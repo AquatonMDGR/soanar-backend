@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.git
+.idea
+.vscode
+target/
+node_modules/
+*.md
+.vercel
+supabase/.temp
+supabase/.branches
