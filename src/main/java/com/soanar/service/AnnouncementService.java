@@ -6,6 +6,8 @@ import com.soanar.repository.AnnouncementRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -98,27 +100,50 @@ public class AnnouncementService {
                 }
             }
             
-            // Trigger notifications based on role (in separate transactions to avoid abort)
-            try {
-                if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
-                    // OSAS or Academic can post directly -> email ALL students
-                    notificationService.notifyStudentsOfPublishedAnnouncement(saved);
-                    // Notify the creator that their post was published
-                    notificationService.notifyEventCreator(saved);
-                } else if ("Student Organization".equals(posterRole)) {
-                    // Student Organization -> notify OSAS for approval (no emails sent yet)
-                    notificationService.notifyOSASOfNewAnnouncement(saved);
-                    // Notify the creator that their post is pending approval
-                    notificationService.notifyEventCreator(saved);
-                }
-            } catch (Exception notifyError) {
-                System.err.println("Warning: Failed to send notifications for announcement " + saved.getId() + ": " + notifyError.getMessage());
-                // Don't fail announcement creation if notifications fail
-            }
+            schedulePostCreateNotifications(saved.getId(), posterRole);
             
             return saved;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create announcement: " + e.getMessage(), e);
+        }
+    }
+
+    private void schedulePostCreateNotifications(Long announcementId, String posterRole) {
+        if (announcementId == null) {
+            return;
+        }
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatchPostCreateNotifications(announcementId, posterRole);
+                }
+            });
+            return;
+        }
+
+        dispatchPostCreateNotifications(announcementId, posterRole);
+    }
+
+    private void dispatchPostCreateNotifications(Long announcementId, String posterRole) {
+        try {
+            Announcement persisted = announcementRepository.findById(announcementId).orElse(null);
+            if (persisted == null) {
+                System.err.println("Warning: Announcement not found for notification dispatch: " + announcementId);
+                return;
+            }
+
+            if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
+                notificationService.notifyStudentsOfPublishedAnnouncement(persisted);
+                notificationService.notifyEventCreator(persisted);
+            } else if ("Student Organization".equals(posterRole)) {
+                notificationService.notifyOSASOfNewAnnouncement(persisted);
+                notificationService.notifyEventCreator(persisted);
+            }
+        } catch (Exception notifyError) {
+            System.err.println("Warning: Failed to send notifications for announcement " + announcementId + ": " + notifyError.getMessage());
+            notifyError.printStackTrace();
         }
     }
 

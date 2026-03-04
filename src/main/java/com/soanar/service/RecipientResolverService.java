@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.regex.Pattern;
 
 @Service
@@ -36,10 +37,11 @@ public class RecipientResolverService {
         List<String> normalizedYearLevels = expandYearLevelAliases(yearLevels);
         List<String> schools = announcement.getTargetSchools();
         List<String> manualEmails = announcement.getTargetManualEmails();
+        Set<DistributionGroup> groups = safeDistributionGroups(announcement);
 
         boolean hasYear = normalizedYearLevels != null && !normalizedYearLevels.isEmpty();
         boolean hasSchool = schools != null && !schools.isEmpty();
-        boolean hasGroups = announcement.getDistributionGroups() != null && !announcement.getDistributionGroups().isEmpty();
+        boolean hasGroups = groups != null && !groups.isEmpty();
         boolean hasManual = manualEmails != null && !manualEmails.isEmpty();
 
         if (hasYear && hasSchool) {
@@ -60,7 +62,7 @@ public class RecipientResolverService {
         }
 
         if (hasGroups) {
-            for (DistributionGroup group : announcement.getDistributionGroups()) {
+            for (DistributionGroup group : groups) {
                 List<DistributionGroupMember> members = distributionGroupMemberRepository.findByGroupId(group.getId());
                 for (DistributionGroupMember member : members) {
                     addIfValid(recipients, member.getStudentEmail());
@@ -83,24 +85,54 @@ public class RecipientResolverService {
             return resolved;
         }
 
-        String posterRole = announcement.getPostedBy() != null ? announcement.getPostedBy().getRole() : null;
-        if ("Student Organization".equals(posterRole)) {
-            if (announcement.getDistributionGroups() != null) {
-                for (DistributionGroup group : announcement.getDistributionGroups()) {
-                    List<DistributionGroupMember> members = distributionGroupMemberRepository.findByGroupId(group.getId());
-                    for (DistributionGroupMember member : members) {
-                        addIfValid(resolved, member.getStudentEmail());
-                    }
-                }
+        if (shouldFallbackToAllStudents(announcement)) {
+            for (User user : userRepository.findByRole("Student")) {
+                addIfValid(resolved, user.getSchoolEmail());
             }
             return resolved;
         }
 
-        for (User user : userRepository.findByRole("Student")) {
-            addIfValid(resolved, user.getSchoolEmail());
+        Set<DistributionGroup> groups = safeDistributionGroups(announcement);
+        if (groups != null) {
+            for (DistributionGroup group : groups) {
+                List<DistributionGroupMember> members = distributionGroupMemberRepository.findByGroupId(group.getId());
+                for (DistributionGroupMember member : members) {
+                    addIfValid(resolved, member.getStudentEmail());
+                }
+            }
         }
 
         return resolved;
+    }
+
+    private boolean shouldFallbackToAllStudents(Announcement announcement) {
+        String posterRole = announcement.getPostedBy() != null ? announcement.getPostedBy().getRole() : null;
+        if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
+            return true;
+        }
+
+        List<String> normalizedYearLevels = expandYearLevelAliases(announcement.getTargetYearLevels());
+        List<String> schools = announcement.getTargetSchools();
+        List<String> manualEmails = announcement.getTargetManualEmails();
+        Set<DistributionGroup> groups = safeDistributionGroups(announcement);
+
+        boolean hasYear = normalizedYearLevels != null && !normalizedYearLevels.isEmpty();
+        boolean hasSchool = schools != null && !schools.isEmpty();
+        boolean hasManual = manualEmails != null && !manualEmails.isEmpty();
+        boolean hasGroups = groups != null && !groups.isEmpty();
+
+        return !hasYear && !hasSchool && !hasManual && !hasGroups;
+    }
+
+    private Set<DistributionGroup> safeDistributionGroups(Announcement announcement) {
+        try {
+            Set<DistributionGroup> groups = announcement.getDistributionGroups();
+            return groups != null ? groups : Collections.emptySet();
+        } catch (Exception ex) {
+            Long announcementId = announcement != null ? announcement.getId() : null;
+            System.err.println("Warning: unable to resolve distribution groups for announcement " + announcementId + ": " + ex.getMessage());
+            return Collections.emptySet();
+        }
     }
 
     public boolean isUserInAudience(User user, Announcement announcement) {

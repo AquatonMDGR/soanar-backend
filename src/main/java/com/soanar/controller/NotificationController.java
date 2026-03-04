@@ -107,6 +107,19 @@ public class NotificationController {
         }
     }
 
+    @PostMapping("/{notificationId}/unread")
+    public ResponseEntity<?> markAsUnreadById(
+            @PathVariable Long notificationId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        try {
+            notificationService.markNotificationAsUnread(notificationId);
+            return ResponseEntity.ok(Map.of("message", "Notification marked as unread"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/read-all")
     public ResponseEntity<?> markAllAsReadNew(@RequestHeader("Authorization") String authHeader) {
         try {

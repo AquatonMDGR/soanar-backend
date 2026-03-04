@@ -420,6 +420,14 @@ public class NotificationService {
     public void markNotificationAsRead(Long notificationId) {
         markAsRead(notificationId);
     }
+
+    @Transactional
+    public void markNotificationAsUnread(Long notificationId) {
+        notificationRepository.findById(notificationId).ifPresent(notification -> {
+            notification.setReadAt(null);
+            notificationRepository.save(notification);
+        });
+    }
     
     /**
      * Mark all notifications as read for a user
