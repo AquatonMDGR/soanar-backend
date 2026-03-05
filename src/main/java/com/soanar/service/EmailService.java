@@ -14,6 +14,7 @@ import org.springframework.core.io.ByteArrayResource;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -134,8 +135,9 @@ public class EmailService {
 
     @Transactional
     public Map<String, Object> forceSendUpcomingTermNewsletter() {
-        LocalDate termStart = getNextTermStart();
-        LocalDate termEnd = termStart.plusMonths(4).minusDays(1);
+        TermWindow nextWindow = getNextTermWindow(LocalDate.now());
+        LocalDate termStart = nextWindow.start();
+        LocalDate termEnd = nextWindow.end();
 
         List<Announcement> upcoming = announcementRepository.findPublishedInDateRange(
                 Arrays.asList("PUBLISHED", "APPROVED"),
@@ -155,29 +157,57 @@ public class EmailService {
             sendTermlyNewsletter(recipients, subject, body);
         }
 
+        boolean sent = !upcoming.isEmpty() && !recipients.isEmpty();
+        String message;
+        if (sent) {
+            message = "Upcoming termly email sent successfully.";
+        } else if (upcoming.isEmpty()) {
+            message = "No upcoming published events found for the next term window.";
+        } else {
+            message = "No student recipients found for termly email.";
+        }
+
         return Map.of(
+                "message", message,
                 "termStart", termStart.toString(),
                 "termEnd", termEnd.toString(),
                 "eventsIncluded", upcoming.size(),
                 "recipients", recipients.size(),
-                "sent", !upcoming.isEmpty() && !recipients.isEmpty()
+                "sent", sent
         );
     }
 
-    private LocalDate getNextTermStart() {
-        LocalDate today = LocalDate.now();
-        int month = today.getMonthValue();
-        int year = today.getYear();
+    private TermWindow getNextTermWindow(LocalDate referenceDate) {
+        int[] termStartMonths = {1, 4, 8}; // Jan, Apr, Aug
+        int year = referenceDate.getYear();
 
-        int[] termStarts = {1, 5, 9};
-        for (int startMonth : termStarts) {
-            if (startMonth > month) {
-                return LocalDate.of(year, startMonth, 1);
+        for (int month : termStartMonths) {
+            LocalDate candidate = LocalDate.of(year, month, 1);
+            if (candidate.isAfter(referenceDate)) {
+                return buildTermWindow(candidate);
             }
         }
 
-        return LocalDate.of(year + 1, 1, 1);
+        return buildTermWindow(LocalDate.of(year + 1, termStartMonths[0], 1));
     }
+
+    private TermWindow buildTermWindow(LocalDate start) {
+        LocalDate nextStart;
+        int month = start.getMonthValue();
+        if (month == 1) {
+            nextStart = LocalDate.of(start.getYear(), 4, 1);
+        } else if (month == 4) {
+            nextStart = LocalDate.of(start.getYear(), 8, 1);
+        } else {
+            nextStart = LocalDate.of(start.getYear() + 1, 1, 1);
+        }
+
+        LocalDate end = nextStart.minusDays(1);
+        YearMonth endMonth = YearMonth.of(end.getYear(), end.getMonth());
+        return new TermWindow(start, endMonth.atEndOfMonth());
+    }
+
+    private record TermWindow(LocalDate start, LocalDate end) {}
 
     private String buildUpcomingTermNewsletterHtml(List<Announcement> upcoming, LocalDate start, LocalDate end) {
         StringBuilder html = new StringBuilder();

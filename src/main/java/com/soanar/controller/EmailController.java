@@ -51,7 +51,7 @@ public class EmailController {
         String token = authHeader.replace("Bearer ", "");
         String role = jwtUtil.extractRole(token);
         
-        if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
+        if (!"Super Admin".equals(role)) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
@@ -70,7 +70,7 @@ public class EmailController {
         String token = authHeader.replace("Bearer ", "");
         String role = jwtUtil.extractRole(token);
 
-        if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
+        if (!"Super Admin".equals(role)) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
