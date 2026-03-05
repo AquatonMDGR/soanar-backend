@@ -52,6 +52,7 @@ public class AuthController {
 
             String email = (String) googleResponse.get("email");
             String name = (String) googleResponse.getOrDefault("name", "");
+            String picture = (String) googleResponse.getOrDefault("picture", "");
 
             // Email domain validation - only @iacademy.edu.ph emails allowed
             // if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
@@ -76,6 +77,7 @@ public class AuthController {
                 "email", email,
                 "role", role,
                 "name", name,
+                "picture", picture,
                 "organizationId", organizationId
             ));
         } catch (org.springframework.web.client.HttpClientErrorException e) {
@@ -96,9 +98,13 @@ public class AuthController {
             String role = jwtUtil.extractRole(token);
             String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
 
+            var existingUser = userService.findByEmail(email).orElse(null);
+            String name = existingUser != null ? existingUser.getName() : "";
+
             return ResponseEntity.ok(Map.of(
                 "email", email,
                 "role", role,
+                "name", name,
                 "organizationId", organizationId
             ));
         } catch (Exception e) {

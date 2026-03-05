@@ -49,9 +49,13 @@ public class AdminController {
 
         String email = body.get("email");
         String newRole = body.get("role");
-        
-        adminService.updateUserRole(email, newRole);
-        return ResponseEntity.ok(Map.of("message", "Role updated successfully"));
+
+        try {
+            adminService.updateUserRole(email, newRole);
+            return ResponseEntity.ok(Map.of("message", "Role updated successfully"));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
     }
 
     @GetMapping("/logs")

@@ -28,6 +28,23 @@ public class AdminService {
     public void updateUserRole(String email, String newRole) {
         User user = userRepository.findBySchoolEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (newRole == null || newRole.isBlank()) {
+            throw new RuntimeException("Role is required");
+        }
+
+        String currentRole = user.getRole();
+
+        // Governance rule:
+        // 1) No one can be promoted into Super Admin from this endpoint.
+        // 2) Existing Super Admin users cannot be demoted from this endpoint.
+        if (!"Super Admin".equals(currentRole) && "Super Admin".equals(newRole)) {
+            throw new RuntimeException("Promoting users to Super Admin is not allowed");
+        }
+        if ("Super Admin".equals(currentRole) && !"Super Admin".equals(newRole)) {
+            throw new RuntimeException("Super Admin role cannot be changed");
+        }
+
         user.setRole(newRole);
         userRepository.save(user);
     }
