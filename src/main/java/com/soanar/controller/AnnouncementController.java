@@ -76,7 +76,7 @@ public class AnnouncementController {
             }
 
             if ("PENDING".equals(status)) {
-                if (!"OSAS".equals(role) && !"Academic".equals(role) && !"Super Admin".equals(role)) {
+                if (!"OSAS".equals(role)) {
                     return ResponseEntity.status(403).body(Map.of("error", "Not authorized to view pending announcements"));
                 }
                 return ResponseEntity.ok(announcementService.getPending());
@@ -197,8 +197,8 @@ public class AnnouncementController {
             String role = jwtUtil.extractRole(token);
             String email = jwtUtil.extractEmail(token);
             
-            if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS or Super Admin can approve"));
+            if (!"OSAS".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can approve"));
             }
             
             User approver = userService.findByEmail(email)
@@ -241,8 +241,8 @@ public class AnnouncementController {
             String role = jwtUtil.extractRole(token);
             String email = jwtUtil.extractEmail(token);
             
-            if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS or Super Admin can reject"));
+            if (!"OSAS".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can reject"));
             }
             
             User rejector = userService.findByEmail(email)
@@ -347,8 +347,8 @@ public class AnnouncementController {
         try {
             String token = authHeader.replace("Bearer ", "");
             String role = jwtUtil.extractRole(token);
-            if (!"OSAS".equals(role) && !"Super Admin".equals(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS or Super Admin can access debug images"));
+            if (!"OSAS".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only OSAS can access debug images"));
             }
 
             Announcement a = announcementService.findById(id).orElseThrow(() -> new RuntimeException("Not found"));

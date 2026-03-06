@@ -56,7 +56,10 @@ public class NotificationService {
         }
         Notification notification = new Notification(announcement, recipientEmail, type, title, message);
         if (announcement != null && announcement.getId() != null) {
-            notification.setActionUrl("/announcement/" + announcement.getId());
+            String actionUrl = "approval-request".equals(type)
+                ? "/approval-queue"
+                : "/announcement/" + announcement.getId();
+            notification.setActionUrl(actionUrl);
             notification.setEntityType("ANNOUNCEMENT");
             notification.setEntityId(announcement.getId());
         }
@@ -189,43 +192,51 @@ public class NotificationService {
      */
     private String buildEmailHtmlBody(Announcement announcement) {
         StringBuilder html = new StringBuilder();
-        html.append("<html><body>");
-        html.append("<p>Hello,</p>");
-        html.append("<p>A new announcement has been posted:</p>");
-        html.append("<p><strong>Title:</strong> ").append(announcement.getTitle()).append("</p>");
-        
-        // DEBUG: Log image details
-        System.out.println("DEBUG buildEmailHtmlBody: imageUrl = " + announcement.getImageUrl());
-        System.out.println("DEBUG buildEmailHtmlBody: imageUrls size = " + (announcement.getImageUrls() != null ? announcement.getImageUrls().size() : "NULL"));
-        if (announcement.getImageUrls() != null) {
-            for (int i = 0; i < announcement.getImageUrls().size(); i++) {
-                System.out.println("DEBUG buildEmailHtmlBody: imageUrls[" + i + "] = " + announcement.getImageUrls().get(i));
-            }
-        }
-        
-        // Include all images from imageUrls array
-        if (announcement.getImageUrls() != null && !announcement.getImageUrls().isEmpty()) {
-            System.out.println("DEBUG buildEmailHtmlBody: Adding " + announcement.getImageUrls().size() + " images to email");
-            for (String imageUrl : announcement.getImageUrls()) {
+        String title = escapeHtml(announcement.getTitle());
+        String description = nl2br(escapeHtml(announcement.getDescription()));
+        String posterName = escapeHtml(resolvePosterName(announcement));
+
+        html.append("<html><body style=\"margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f4f6;padding:24px 0;\">");
+        html.append("<tr><td align=\"center\">");
+        html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;\">");
+        html.append("<tr><td style=\"padding:24px 28px 8px;color:#111827;font-size:18px;font-weight:700;\">New Announcement</td></tr>");
+        html.append("<tr><td style=\"padding:0 28px 16px;color:#111827;font-size:28px;line-height:1.35;font-weight:700;\">")
+            .append(title)
+            .append("</td></tr>");
+        html.append("<tr><td style=\"padding:0 28px 12px;color:#374151;font-size:15px;line-height:1.6;\">Hello,</td></tr>");
+        html.append("<tr><td style=\"padding:0 28px 16px;color:#374151;font-size:15px;line-height:1.6;\">A new announcement has been posted:</td></tr>");
+
+        List<String> imageUrls = announcement.getImageUrls() != null ? announcement.getImageUrls() : Collections.emptyList();
+        if (!imageUrls.isEmpty()) {
+            for (String imageUrl : imageUrls) {
                 if (imageUrl != null && !imageUrl.isBlank()) {
-                    System.out.println("DEBUG buildEmailHtmlBody: Adding image URL: " + imageUrl);
-                    html.append("<p><img src=\"").append(imageUrl).append("\" alt=\"Announcement image\" style=\"max-width:600px;height:auto;margin:10px 0;\"/></p>");
+                    html.append("<tr><td align=\"center\" style=\"padding:0 28px 14px;\">")
+                        .append("<img src=\"")
+                        .append(imageUrl)
+                        .append("\" alt=\"Announcement visual\" style=\"display:block;width:100%;max-width:584px;height:auto;border-radius:10px;border:1px solid #e5e7eb;\"/>")
+                        .append("</td></tr>");
                 }
             }
         } else if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
-            // Fallback to single imageUrl for backward compatibility
-            System.out.println("DEBUG buildEmailHtmlBody: Fallback - using single imageUrl: " + announcement.getImageUrl());
-            html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Announcement image\" style=\"max-width:600px;height:auto;\"/></p>");
-        } else {
-            System.out.println("DEBUG buildEmailHtmlBody: NO IMAGES FOUND - imageUrls is " + (announcement.getImageUrls() == null ? "NULL" : "EMPTY") + ", imageUrl is " + (announcement.getImageUrl() == null ? "NULL" : "EMPTY"));
+            html.append("<tr><td align=\"center\" style=\"padding:0 28px 14px;\">")
+                .append("<img src=\"")
+                .append(announcement.getImageUrl())
+                .append("\" alt=\"Announcement visual\" style=\"display:block;width:100%;max-width:584px;height:auto;border-radius:10px;border:1px solid #e5e7eb;\"/>")
+                .append("</td></tr>");
         }
-        
-        html.append("<p><strong>Description:</strong><br/>").append(announcement.getDescription() != null ? announcement.getDescription() : "").append("</p>");
-        if (announcement.getPostedBy() != null) {
-            html.append("<p>Posted by: ").append(announcement.getPostedBy().getName()).append("</p>");
-        }
-        html.append("<p>Log in to SONAR to view more details.</p>");
-        html.append("<p>Best regards,<br/>SONAR - Student Organization & Notification Announcement Resource</p>");
+
+        html.append("<tr><td style=\"padding:8px 28px 0;color:#111827;font-size:14px;font-weight:700;\">Description</td></tr>");
+        html.append("<tr><td style=\"padding:8px 28px 0;color:#374151;font-size:15px;line-height:1.65;\">")
+            .append(description)
+            .append("</td></tr>");
+        html.append("<tr><td style=\"padding:16px 28px 0;color:#4b5563;font-size:15px;\">Posted by: ")
+            .append(posterName)
+            .append("</td></tr>");
+        html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SONAR to view more details.</td></tr>");
+        html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SONAR</td></tr>");
+        html.append("</table>");
+        html.append("</td></tr></table>");
         html.append("</body></html>");
         return html.toString();
     }
@@ -240,7 +251,7 @@ public class NotificationService {
             createNotification(
                 announcement,
                 osasUser.getSchoolEmail(),
-                "approval",
+                "approval-request",
                 "New Announcement Awaiting Approval",
                 "Student Organization '" + announcement.getPostedBy().getName() + "' has submitted an announcement: \"" + announcement.getTitle() + "\" for approval."
             );
@@ -307,26 +318,45 @@ public class NotificationService {
         try {
             String subject = title;
             StringBuilder html = new StringBuilder();
-            html.append("<html><body>");
-            html.append("<p>Hello,</p>");
-            html.append("<p>").append(message).append("</p>");
+            html.append("<html><body style=\"margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;\">");
+            html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f4f6;padding:24px 0;\">\n");
+            html.append("<tr><td align=\"center\">\n");
+            html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;\">\n");
+            html.append("<tr><td style=\"padding:24px 28px 8px;color:#111827;font-size:24px;font-weight:700;\">Event Created Successfully</td></tr>");
+            html.append("<tr><td style=\"padding:0 28px 16px;color:#374151;font-size:15px;line-height:1.6;\">Hello,</td></tr>");
+            html.append("<tr><td style=\"padding:0 28px 16px;color:#374151;font-size:15px;line-height:1.6;\">")
+                .append(escapeHtml(message))
+                .append("</td></tr>");
             
             // Include all images from imageUrls array
             if (announcement.getImageUrls() != null && !announcement.getImageUrls().isEmpty()) {
                 for (String imageUrl : announcement.getImageUrls()) {
                     if (imageUrl != null && !imageUrl.isBlank()) {
-                        html.append("<p><img src=\"").append(imageUrl).append("\" alt=\"Event Image\" style=\"max-width:600px;height:auto;margin:10px 0;\"/></p>");
+                        html.append("<tr><td align=\"center\" style=\"padding:0 28px 14px;\">")
+                            .append("<img src=\"").append(imageUrl)
+                            .append("\" alt=\"Event visual\" style=\"display:block;width:100%;max-width:584px;height:auto;border-radius:10px;border:1px solid #e5e7eb;\"/>")
+                            .append("</td></tr>");
                     }
                 }
             } else if (announcement.getImageUrl() != null && !announcement.getImageUrl().isBlank()) {
                 // Fallback to single imageUrl for backward compatibility
-                html.append("<p><img src=\"").append(announcement.getImageUrl()).append("\" alt=\"Event Image\" style=\"max-width:600px;height:auto;\"/></p>");
+                html.append("<tr><td align=\"center\" style=\"padding:0 28px 14px;\">")
+                    .append("<img src=\"").append(announcement.getImageUrl())
+                    .append("\" alt=\"Event visual\" style=\"display:block;width:100%;max-width:584px;height:auto;border-radius:10px;border:1px solid #e5e7eb;\"/>")
+                    .append("</td></tr>");
             }
             
-            html.append("<p>Title: <strong>").append(announcement.getTitle()).append("</strong></p>");
-            html.append("<p>Description:<br/>").append(announcement.getDescription() != null ? announcement.getDescription() : "").append("</p>");
-            html.append("<p>Log in to SONAR to view more details.</p>");
-            html.append("<p>Best regards,<br/>SONAR - Student Organization & Notification Announcement Resource</p>");
+            html.append("<tr><td style=\"padding:8px 28px 0;color:#111827;font-size:14px;font-weight:700;\">Title</td></tr>");
+            html.append("<tr><td style=\"padding:8px 28px 0;color:#374151;font-size:15px;line-height:1.65;\">")
+                .append(escapeHtml(announcement.getTitle()))
+                .append("</td></tr>");
+            html.append("<tr><td style=\"padding:12px 28px 0;color:#111827;font-size:14px;font-weight:700;\">Description</td></tr>");
+            html.append("<tr><td style=\"padding:8px 28px 0;color:#374151;font-size:15px;line-height:1.65;\">")
+                .append(nl2br(escapeHtml(announcement.getDescription())))
+                .append("</td></tr>");
+            html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SONAR to view more details.</td></tr>");
+            html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SONAR</td></tr>");
+            html.append("</table></td></tr></table>");
             html.append("</body></html>");
 
             emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
@@ -467,6 +497,32 @@ public class NotificationService {
      */
     public NotificationPreference getPreferences(User user, String organizationId) {
         return getOrCreatePreferences(user, organizationId);
+    }
+
+    private String resolvePosterName(Announcement announcement) {
+        if (announcement.getPosterNameSnapshot() != null && !announcement.getPosterNameSnapshot().isBlank()) {
+            return announcement.getPosterNameSnapshot();
+        }
+        if (announcement.getPostedBy() != null && announcement.getPostedBy().getName() != null && !announcement.getPostedBy().getName().isBlank()) {
+            return announcement.getPostedBy().getName();
+        }
+        return "SOANAR Team";
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;");
+    }
+
+    private String nl2br(String value) {
+        return value == null ? "" : value.replace("\n", "<br/>");
     }
     
     /**

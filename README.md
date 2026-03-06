@@ -10,6 +10,18 @@ Spring Boot backend for the SONAR announcement system.
 
 Runs on http://localhost:8080
 
+## Auto Restart On Save (Backend)
+
+Backend auto-restart is handled by Spring Boot DevTools (already included in `pom.xml`).
+
+Use:
+
+```bash
+./mvnw spring-boot:run
+```
+
+Then ensure your IDE auto-builds on save so class/resource changes are picked up and DevTools restarts the app.
+
 ## Architecture
 
 ### Controllers

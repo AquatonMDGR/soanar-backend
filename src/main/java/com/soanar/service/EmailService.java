@@ -211,24 +211,60 @@ public class EmailService {
 
     private String buildUpcomingTermNewsletterHtml(List<Announcement> upcoming, LocalDate start, LocalDate end) {
         StringBuilder html = new StringBuilder();
-        html.append("<html><body>");
-        html.append("<h2>Upcoming Events for Next Term</h2>");
-        html.append("<p><strong>Coverage:</strong> ").append(start).append(" to ").append(end).append("</p>");
-        html.append("<ul>");
+        html.append("<html><body style=\"margin:0;padding:0;background:#f3f2ef;font-family:Arial,Helvetica,sans-serif;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f2ef;padding:24px 0;\">");
+        html.append("<tr><td align=\"center\">");
+        html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:12px;overflow:hidden;\">");
+
+        html.append("<tr><td style=\"padding:18px 24px;background:#0a66c2;color:#ffffff;font-size:15px;font-weight:700;\">SONAR Updates</td></tr>");
+        html.append("<tr><td style=\"padding:24px 24px 8px;color:#111827;font-size:34px;line-height:1.2;font-weight:700;\">Upcoming Events for Next Term</td></tr>");
+        html.append("<tr><td style=\"padding:0 24px 18px;color:#4b5563;font-size:15px;\"><strong>Coverage:</strong> ")
+            .append(start)
+            .append(" to ")
+            .append(end)
+            .append("</td></tr>");
 
         for (Announcement announcement : upcoming) {
-            html.append("<li style=\"margin-bottom:12px;\">")
-                .append("<strong>").append(announcement.getTitle()).append("</strong><br/>")
-                .append("Date: ").append(announcement.getStartDate())
+            html.append("<tr><td style=\"padding:0 24px 12px;\">");
+            html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;\">");
+            html.append("<tr><td style=\"padding:14px 16px 6px;color:#111827;font-size:18px;font-weight:700;\">")
+                .append(escapeHtml(announcement.getTitle()))
+                .append("</td></tr>");
+            html.append("<tr><td style=\"padding:0 16px 8px;color:#374151;font-size:14px;\">Date: ")
+                .append(announcement.getStartDate() != null ? announcement.getStartDate() : "TBD")
                 .append(announcement.getEndDate() != null ? " to " + announcement.getEndDate() : "")
-                .append("<br/>")
-                .append(announcement.getDescription() != null ? announcement.getDescription() : "")
-                .append("</li>");
+                .append("</td></tr>");
+            html.append("<tr><td style=\"padding:0 16px 14px;color:#4b5563;font-size:14px;line-height:1.5;\">")
+                .append(nl2br(escapeHtml(announcement.getDescription())))
+                .append("</td></tr>");
+            html.append("</table>");
+            html.append("</td></tr>");
         }
 
-        html.append("</ul>");
-        html.append("<p>Best regards,<br/>SONAR</p>");
+        html.append("<tr><td align=\"center\" style=\"padding:16px 24px 8px;\">");
+        html.append("<a href=\"https://soanar.app\" style=\"display:inline-block;background:#0a66c2;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:12px 24px;border-radius:999px;\">Open SONAR</a>");
+        html.append("</td></tr>");
+        html.append("<tr><td style=\"padding:8px 24px 24px;color:#6b7280;font-size:13px;line-height:1.5;text-align:center;\">You are receiving this update because you are enrolled in SONAR notifications.</td></tr>");
+
+        html.append("</table>");
+        html.append("</td></tr></table>");
         html.append("</body></html>");
         return html.toString();
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
+    }
+
+    private String nl2br(String value) {
+        return value == null ? "" : value.replace("\n", "<br/>");
     }
 }
