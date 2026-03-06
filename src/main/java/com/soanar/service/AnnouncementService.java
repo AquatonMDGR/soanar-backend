@@ -78,6 +78,7 @@ public class AnnouncementService {
         String posterRole = poster.getRole();
         a.setPosterRoleSnapshot(posterRole);
         a.setPosterNameSnapshot(poster.getName());
+        a.setPosterPhotoSnapshot(poster.getPhotoUrl());
         
         if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
             a.setStatus("PUBLISHED");

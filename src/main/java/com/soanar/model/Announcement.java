@@ -38,6 +38,10 @@ public class Announcement {
     @Column(name = "poster_name_snapshot")
     private String posterNameSnapshot;
 
+    @Column(name = "poster_photo_snapshot")
+    @JsonProperty("posterPhotoUrl")
+    private String posterPhotoSnapshot;
+
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, APPROVED, REJECTED, PUBLISHED
 
@@ -116,6 +120,9 @@ public class Announcement {
 
     public String getPosterNameSnapshot() { return posterNameSnapshot; }
     public void setPosterNameSnapshot(String posterNameSnapshot) { this.posterNameSnapshot = posterNameSnapshot; }
+
+    public String getPosterPhotoSnapshot() { return posterPhotoSnapshot; }
+    public void setPosterPhotoSnapshot(String posterPhotoSnapshot) { this.posterPhotoSnapshot = posterPhotoSnapshot; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

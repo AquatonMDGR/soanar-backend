@@ -25,15 +25,27 @@ public class UserService {
 	}
 
 	public User createOrUpdate(String email, String role, String name) {
+		return createOrUpdate(email, role, name, null);
+	}
+
+	public User createOrUpdate(String email, String role, String name, String photoUrl) {
 		Optional<User> found = userRepository.findBySchoolEmail(email);
 		if (found.isPresent()) {
 			User u = found.get();
-			u.setName(name);
+			if (name != null && !name.isBlank()) {
+				u.setName(name);
+			}
 			u.setRole(role);
+			if (photoUrl != null && !photoUrl.isBlank()) {
+				u.setPhotoUrl(photoUrl);
+			}
 			return userRepository.save(u);
 		}
 		User u = new User(email, role, name);
 		u.setIsActive(true);
+		if (photoUrl != null && !photoUrl.isBlank()) {
+			u.setPhotoUrl(photoUrl);
+		}
 		return userRepository.save(u);
 	}
 }

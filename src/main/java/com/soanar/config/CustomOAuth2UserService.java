@@ -31,6 +31,7 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         Map<String, Object> attrs = oauthUser.getAttributes();
         String email = (String) attrs.getOrDefault("email", attrs.get("preferred_username"));
         String name = (String) attrs.getOrDefault("name", "");
+        String picture = (String) attrs.getOrDefault("picture", "");
 
         if (email == null) {
             throw new OAuth2AuthenticationException("Email not found in OAuth2 response");
@@ -45,7 +46,7 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         // Basic role resolution: default to Student; admin roles assigned via Admin API
         String role = "Student";
 
-        userService.createOrUpdate(email, role, name);
+        userService.createOrUpdate(email, role, name, picture);
 
         return new DefaultOAuth2User(Collections.singleton(new SimpleGrantedAuthority("ROLE_" + role)), attrs, "email");
     }

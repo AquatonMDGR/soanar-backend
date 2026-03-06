@@ -62,14 +62,21 @@ public class AuthController {
             // Get or create user
             String role = "Student";
             var user = userService.findByEmail(email);
+            String resolvedPhotoUrl = picture;
             if (user.isPresent()) {
                 if (Boolean.FALSE.equals(user.get().getIsActive())) {
                     return ResponseEntity.status(403).body(Map.of("error", "Your account has been deactivated. Please contact an administrator."));
                 }
                 role = user.get().getRole();
+                if (resolvedPhotoUrl == null || resolvedPhotoUrl.isBlank()) {
+                    resolvedPhotoUrl = user.get().getPhotoUrl();
+                }
             } else {
-                userService.createOrUpdate(email, role, name);
+                role = "Student";
             }
+
+            // Keep profile data synced with latest Google account metadata.
+            var savedUser = userService.createOrUpdate(email, role, name, resolvedPhotoUrl);
 
             // Generate JWT
             String token = jwtUtil.generateToken(email, role);
@@ -80,7 +87,8 @@ public class AuthController {
                 "email", email,
                 "role", role,
                 "name", name,
-                "picture", picture,
+                "picture", savedUser.getPhotoUrl(),
+                "photoUrl", savedUser.getPhotoUrl(),
                 "organizationId", organizationId
             ));
         } catch (org.springframework.web.client.HttpClientErrorException e) {
@@ -106,11 +114,13 @@ public class AuthController {
                 return ResponseEntity.status(403).body(Map.of("error", "Your account has been deactivated. Please contact an administrator."));
             }
             String name = existingUser != null ? existingUser.getName() : "";
+            String photoUrl = existingUser != null ? existingUser.getPhotoUrl() : "";
 
             return ResponseEntity.ok(Map.of(
                 "email", email,
                 "role", role,
                 "name", name,
+                "photoUrl", photoUrl,
                 "organizationId", organizationId
             ));
         } catch (Exception e) {

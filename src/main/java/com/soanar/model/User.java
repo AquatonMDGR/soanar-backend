@@ -20,6 +20,9 @@ public class User {
     @Column(name = "name")
     private String name;
 
+    @Column(name = "photo_url")
+    private String photoUrl;
+
     @Column(name = "year_level")
     private String yearLevel;
 
@@ -51,6 +54,9 @@ public class User {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public String getPhotoUrl() { return photoUrl; }
+    public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
 
     public String getYearLevel() { return yearLevel; }
     public void setYearLevel(String yearLevel) { this.yearLevel = yearLevel; }
