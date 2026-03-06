@@ -45,17 +45,17 @@ public class RecipientResolverService {
         boolean hasManual = manualEmails != null && !manualEmails.isEmpty();
 
         if (hasYear && hasSchool) {
-            for (User user : userRepository.findByRoleAndYearLevelInAndSchoolIn("Student", normalizedYearLevels, schools)) {
+            for (User user : userRepository.findByRoleAndIsActiveTrueAndYearLevelInAndSchoolIn("Student", normalizedYearLevels, schools)) {
                 addIfValid(recipients, user.getSchoolEmail());
             }
         } else {
             if (hasYear) {
-                for (User user : userRepository.findByRoleAndYearLevelIn("Student", normalizedYearLevels)) {
+                for (User user : userRepository.findByRoleAndIsActiveTrueAndYearLevelIn("Student", normalizedYearLevels)) {
                     addIfValid(recipients, user.getSchoolEmail());
                 }
             }
             if (hasSchool) {
-                for (User user : userRepository.findByRoleAndSchoolIn("Student", schools)) {
+                for (User user : userRepository.findByRoleAndIsActiveTrueAndSchoolIn("Student", schools)) {
                     addIfValid(recipients, user.getSchoolEmail());
                 }
             }
@@ -86,7 +86,7 @@ public class RecipientResolverService {
         }
 
         if (shouldFallbackToAllStudents(announcement)) {
-            for (User user : userRepository.findByRole("Student")) {
+            for (User user : userRepository.findByRoleAndIsActiveTrue("Student")) {
                 addIfValid(resolved, user.getSchoolEmail());
             }
             return resolved;
@@ -137,6 +137,10 @@ public class RecipientResolverService {
 
     public boolean isUserInAudience(User user, Announcement announcement) {
         if (user == null || announcement == null) {
+            return false;
+        }
+
+        if (Boolean.FALSE.equals(user.getIsActive())) {
             return false;
         }
 

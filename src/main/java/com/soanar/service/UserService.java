@@ -33,6 +33,7 @@ public class UserService {
 			return userRepository.save(u);
 		}
 		User u = new User(email, role, name);
+		u.setIsActive(true);
 		return userRepository.save(u);
 	}
 }

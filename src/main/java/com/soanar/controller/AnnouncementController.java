@@ -5,6 +5,8 @@ import com.soanar.model.User;
 import com.soanar.model.DistributionGroup;
 import com.soanar.dto.TargetingRequest;
 import com.soanar.service.AnnouncementService;
+import com.soanar.service.AuditLogService;
+import com.soanar.service.OrganizationSettingsService;
 import com.soanar.service.UserService;
 import com.soanar.repository.DistributionGroupRepository;
 import com.soanar.util.JwtUtil;
@@ -30,17 +32,23 @@ public class AnnouncementController {
 
     private final AnnouncementService announcementService;
     private final UserService userService;
+    private final AuditLogService auditLogService;
+    private final OrganizationSettingsService organizationSettingsService;
     private final JwtUtil jwtUtil;
     private final ObjectMapper objectMapper;
     private final DistributionGroupRepository distributionGroupRepository;
 
     public AnnouncementController(AnnouncementService announcementService, 
                                    UserService userService,
+                                   AuditLogService auditLogService,
+                                   OrganizationSettingsService organizationSettingsService,
                                    JwtUtil jwtUtil,
                                    ObjectMapper objectMapper,
                                    DistributionGroupRepository distributionGroupRepository) {
         this.announcementService = announcementService;
         this.userService = userService;
+        this.auditLogService = auditLogService;
+        this.organizationSettingsService = organizationSettingsService;
         this.jwtUtil = jwtUtil;
         this.objectMapper = objectMapper;
         this.distributionGroupRepository = distributionGroupRepository;
@@ -162,6 +170,15 @@ public class AnnouncementController {
             }
             
             Announcement created = announcementService.create(announcement, poster);
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
+            auditLogService.log(
+                poster,
+                organizationId,
+                "CREATE",
+                "ANNOUNCEMENT",
+                created.getId(),
+                "Created announcement: " + created.getTitle()
+            );
             return ResponseEntity.ok(created);
         } catch (Exception e) {
             e.printStackTrace();
@@ -189,6 +206,15 @@ public class AnnouncementController {
 
             String notes = (payload != null && payload.containsKey("notes")) ? payload.get("notes") : "";
             Announcement a = announcementService.approve(id, approver, notes);
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
+            auditLogService.log(
+                approver,
+                organizationId,
+                "APPROVE",
+                "ANNOUNCEMENT",
+                a.getId(),
+                "Approved announcement: " + a.getTitle()
+            );
             
             // Send notifications in separate transaction
             try {
@@ -224,6 +250,15 @@ public class AnnouncementController {
 
             String reason = (payload != null && payload.containsKey("reason")) ? payload.get("reason") : "";
             Announcement a = announcementService.reject(id, rejector, reason);
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
+            auditLogService.log(
+                rejector,
+                organizationId,
+                "REJECT",
+                "ANNOUNCEMENT",
+                a.getId(),
+                "Rejected announcement: " + a.getTitle()
+            );
             
             // Send notifications in separate transaction
             try {
@@ -256,6 +291,19 @@ public class AnnouncementController {
             User poster = announcement.getPostedBy();
             if (poster == null || (!poster.getSchoolEmail().equals(email) && !"OSAS".equals(role))) {
                 return ResponseEntity.status(403).body(Map.of("error", "Only the poster or OSAS can delete this announcement"));
+            }
+
+            User actor = userService.findByEmail(email).orElse(null);
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
+            if (actor != null) {
+                auditLogService.log(
+                    actor,
+                    organizationId,
+                    "DELETE",
+                    "ANNOUNCEMENT",
+                    announcement.getId(),
+                    "Deleted announcement: " + announcement.getTitle()
+                );
             }
             
             announcementService.delete(id);

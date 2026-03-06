@@ -51,6 +51,9 @@ public class NotificationService {
 
     @Transactional
     public void createNotification(Announcement announcement, String recipientEmail, String type, String title, String message) {
+        if (isKnownInactiveRecipient(recipientEmail)) {
+            return;
+        }
         Notification notification = new Notification(announcement, recipientEmail, type, title, message);
         if (announcement != null && announcement.getId() != null) {
             notification.setActionUrl("/announcement/" + announcement.getId());
@@ -63,6 +66,9 @@ public class NotificationService {
 
     @Transactional
     public void createNotification(Announcement announcement, String recipientEmail) {
+        if (isKnownInactiveRecipient(recipientEmail)) {
+            return;
+        }
         Notification notification = new Notification();
         notification.setAnnouncement(announcement);
         notification.setRecipientEmail(recipientEmail);
@@ -229,7 +235,7 @@ public class NotificationService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyOSASOfNewAnnouncement(Announcement announcement) {
-        List<User> osasUsers = userRepository.findByRole("OSAS");
+        List<User> osasUsers = userRepository.findByRoleAndIsActiveTrue("OSAS");
         for (User osasUser : osasUsers) {
             createNotification(
                 announcement,
@@ -448,6 +454,12 @@ public class NotificationService {
                 prefs.setOrganizationId(organizationId);
                 return notificationPreferenceRepository.save(prefs);
             });
+    }
+
+    private boolean isKnownInactiveRecipient(String recipientEmail) {
+        return userRepository.findBySchoolEmail(recipientEmail)
+            .map(user -> Boolean.FALSE.equals(user.getIsActive()))
+            .orElse(false);
     }
     
     /**

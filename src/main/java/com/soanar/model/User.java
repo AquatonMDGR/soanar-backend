@@ -26,6 +26,9 @@ public class User {
     @Column(name = "school")
     private String school;
 
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
@@ -54,6 +57,9 @@ public class User {
 
     public String getSchool() { return school; }
     public void setSchool(String school) { this.school = school; }
+
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean active) { isActive = active; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

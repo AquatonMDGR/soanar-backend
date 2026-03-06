@@ -63,6 +63,9 @@ public class AuthController {
             String role = "Student";
             var user = userService.findByEmail(email);
             if (user.isPresent()) {
+                if (Boolean.FALSE.equals(user.get().getIsActive())) {
+                    return ResponseEntity.status(403).body(Map.of("error", "Your account has been deactivated. Please contact an administrator."));
+                }
                 role = user.get().getRole();
             } else {
                 userService.createOrUpdate(email, role, name);
@@ -99,6 +102,9 @@ public class AuthController {
             String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
 
             var existingUser = userService.findByEmail(email).orElse(null);
+            if (existingUser != null && Boolean.FALSE.equals(existingUser.getIsActive())) {
+                return ResponseEntity.status(403).body(Map.of("error", "Your account has been deactivated. Please contact an administrator."));
+            }
             String name = existingUser != null ? existingUser.getName() : "";
 
             return ResponseEntity.ok(Map.of(

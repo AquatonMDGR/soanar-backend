@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soanar.repository.DistributionGroupRepository;
 import com.soanar.model.User;
 import com.soanar.service.AnnouncementService;
+import com.soanar.service.AuditLogService;
+import com.soanar.service.OrganizationSettingsService;
 import com.soanar.service.UserService;
 import com.soanar.util.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +40,12 @@ class AnnouncementControllerTest {
     @Mock
     private DistributionGroupRepository distributionGroupRepository;
 
+    @Mock
+    private AuditLogService auditLogService;
+
+    @Mock
+    private OrganizationSettingsService organizationSettingsService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -45,9 +53,11 @@ class AnnouncementControllerTest {
         AnnouncementController controller = new AnnouncementController(
                 announcementService,
                 userService,
+                auditLogService,
+                organizationSettingsService,
                 jwtUtil,
-            new ObjectMapper(),
-            distributionGroupRepository
+                new ObjectMapper(),
+                distributionGroupRepository
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();

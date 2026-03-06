@@ -32,6 +32,12 @@ public class Announcement {
     @JoinColumn(name = "posted_by")
     private User postedBy;
 
+    @Column(name = "poster_role_snapshot")
+    private String posterRoleSnapshot;
+
+    @Column(name = "poster_name_snapshot")
+    private String posterNameSnapshot;
+
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, APPROVED, REJECTED, PUBLISHED
 
@@ -104,6 +110,12 @@ public class Announcement {
 
     public User getPostedBy() { return postedBy; }
     public void setPostedBy(User postedBy) { this.postedBy = postedBy; }
+
+    public String getPosterRoleSnapshot() { return posterRoleSnapshot; }
+    public void setPosterRoleSnapshot(String posterRoleSnapshot) { this.posterRoleSnapshot = posterRoleSnapshot; }
+
+    public String getPosterNameSnapshot() { return posterNameSnapshot; }
+    public void setPosterNameSnapshot(String posterNameSnapshot) { this.posterNameSnapshot = posterNameSnapshot; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

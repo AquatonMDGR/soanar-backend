@@ -76,6 +76,8 @@ public class AnnouncementService {
         // Set the poster - Spring Data JPA will manage the relationship
         a.setPostedBy(poster);
         String posterRole = poster.getRole();
+        a.setPosterRoleSnapshot(posterRole);
+        a.setPosterNameSnapshot(poster.getName());
         
         if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
             a.setStatus("PUBLISHED");

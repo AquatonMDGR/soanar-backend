@@ -25,7 +25,7 @@ public class AdminService {
     }
 
     @Transactional
-    public void updateUserRole(String email, String newRole) {
+    public User updateUserRole(String email, String newRole) {
         User user = userRepository.findBySchoolEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -46,7 +46,20 @@ public class AdminService {
         }
 
         user.setRole(newRole);
-        userRepository.save(user);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User updateUserActiveStatus(String email, boolean isActive) {
+        User user = userRepository.findBySchoolEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if ("Super Admin".equals(user.getRole()) && !isActive) {
+            throw new RuntimeException("Super Admin account cannot be deactivated");
+        }
+
+        user.setIsActive(isActive);
+        return userRepository.save(user);
     }
 
     public List<AuditLog> getAuditLogs() {
