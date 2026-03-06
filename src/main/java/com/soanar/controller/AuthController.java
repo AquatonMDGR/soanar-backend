@@ -2,8 +2,8 @@ package com.soanar.controller;
 
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,17 +18,25 @@ import com.soanar.util.JwtUtil;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*")
 public class AuthController {
 
     private final UserService userService;
     private final OrganizationSettingsService organizationSettingsService;
     private final JwtUtil jwtUtil;
+    private final boolean authEnforceDomain;
+    private final String authAllowedDomain;
 
-    public AuthController(UserService userService, OrganizationSettingsService organizationSettingsService, JwtUtil jwtUtil) {
+    public AuthController(
+            UserService userService,
+            OrganizationSettingsService organizationSettingsService,
+            JwtUtil jwtUtil,
+            @Value("${auth.enforce-domain:true}") boolean authEnforceDomain,
+            @Value("${auth.allowed-domain:iacademy.edu.ph}") String authAllowedDomain) {
         this.userService = userService;
         this.organizationSettingsService = organizationSettingsService;
         this.jwtUtil = jwtUtil;
+        this.authEnforceDomain = authEnforceDomain;
+        this.authAllowedDomain = authAllowedDomain;
     }
 
     @PostMapping("/login")
@@ -54,10 +62,10 @@ public class AuthController {
             String name = (String) googleResponse.getOrDefault("name", "");
             String picture = (String) googleResponse.getOrDefault("picture", "");
 
-            // Email domain validation - only @iacademy.edu.ph emails allowed
-            // if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
-            //     return ResponseEntity.status(403).body(Map.of("error", "Only @iacademy.edu.ph emails are allowed"));
-            // }
+            if (authEnforceDomain && !isAllowedEmailDomain(email)) {
+                return ResponseEntity.status(403)
+                        .body(Map.of("error", "Only @" + authAllowedDomain + " emails are allowed"));
+            }
 
             // Get or create user
             String role = "Student";
@@ -126,5 +134,12 @@ public class AuthController {
         } catch (Exception e) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid token"));
         }
+    }
+
+    private boolean isAllowedEmailDomain(String email) {
+        return email != null
+                && authAllowedDomain != null
+                && !authAllowedDomain.isBlank()
+                && email.toLowerCase().endsWith("@" + authAllowedDomain.toLowerCase());
     }
 }

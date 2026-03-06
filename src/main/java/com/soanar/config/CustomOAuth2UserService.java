@@ -3,6 +3,7 @@ package com.soanar.config;
 import java.util.Collections;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
@@ -17,9 +18,16 @@ import com.soanar.service.UserService;
 public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequest, OAuth2User> {
 
     private final UserService userService;
+    private final boolean authEnforceDomain;
+    private final String authAllowedDomain;
 
-    public CustomOAuth2UserService(UserService userService) {
+    public CustomOAuth2UserService(
+            UserService userService,
+            @Value("${auth.enforce-domain:true}") boolean authEnforceDomain,
+            @Value("${auth.allowed-domain:iacademy.edu.ph}") String authAllowedDomain) {
         this.userService = userService;
+        this.authEnforceDomain = authEnforceDomain;
+        this.authAllowedDomain = authAllowedDomain;
     }
 
     @Override
@@ -37,11 +45,9 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
             throw new OAuth2AuthenticationException("Email not found in OAuth2 response");
         }
 
-        // Email domain validation - only @iacademy.edu.ph emails allowed
-        // TEMPORARILY DISABLED FOR TESTING MULTIPLE ROLES
-        // if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
-        //     throw new OAuth2AuthenticationException("Only @iacademy.edu.ph emails are allowed");
-        // }
+        if (authEnforceDomain && !isAllowedEmailDomain(email)) {
+            throw new OAuth2AuthenticationException("Only @" + authAllowedDomain + " emails are allowed");
+        }
 
         // Basic role resolution: default to Student; admin roles assigned via Admin API
         String role = "Student";
@@ -49,5 +55,12 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
         userService.createOrUpdate(email, role, name, picture);
 
         return new DefaultOAuth2User(Collections.singleton(new SimpleGrantedAuthority("ROLE_" + role)), attrs, "email");
+    }
+
+    private boolean isAllowedEmailDomain(String email) {
+        return email != null
+                && authAllowedDomain != null
+                && !authAllowedDomain.isBlank()
+                && email.toLowerCase().endsWith("@" + authAllowedDomain.toLowerCase());
     }
 }
