@@ -314,6 +314,42 @@ public class AnnouncementController {
         }
     }
 
+    @DeleteMapping("/{id}/soft-delete")
+    public ResponseEntity<?> softDelete(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long id) {
+
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            String email = jwtUtil.extractEmail(token);
+            String role = jwtUtil.extractRole(token);
+
+            if (!"Super Admin".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only Super Admin can soft-delete announcements"));
+            }
+
+            User actor = userService.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            Announcement announcement = announcementService.softDelete(id);
+
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
+            auditLogService.log(
+                actor,
+                organizationId,
+                "SOFT_DELETE",
+                "ANNOUNCEMENT",
+                announcement.getId(),
+                "Soft-deleted announcement: " + announcement.getTitle()
+            );
+
+            return ResponseEntity.ok(Map.of("message", "Announcement soft-deleted successfully"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /**
      * Get public announcement (no authentication required)
      * GET /api/announcements/public/{id}

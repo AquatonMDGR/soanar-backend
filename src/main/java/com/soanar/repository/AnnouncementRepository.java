@@ -8,17 +8,24 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AnnouncementRepository extends JpaRepository<Announcement, Long> {
-    @Query("SELECT a FROM Announcement a WHERE a.status = :status ORDER BY a.createdAt DESC")
+    @Query("SELECT a FROM Announcement a WHERE a.isDeleted = false AND a.status = :status ORDER BY a.createdAt DESC")
     List<Announcement> findByStatus(@Param("status") String status);
     
-    @Query("SELECT a FROM Announcement a WHERE a.status IN :statuses ORDER BY a.createdAt DESC")
+    @Query("SELECT a FROM Announcement a WHERE a.isDeleted = false AND a.status IN :statuses ORDER BY a.createdAt DESC")
     List<Announcement> findByStatusIn(@Param("statuses") List<String> statuses);
 
-    @Query("SELECT a FROM Announcement a WHERE a.status IN :statuses AND a.startDate IS NOT NULL AND a.startDate BETWEEN :startDate AND :endDate ORDER BY a.startDate ASC")
+    @Query("SELECT a FROM Announcement a WHERE a.isDeleted = false AND a.status IN :statuses AND a.startDate IS NOT NULL AND a.startDate BETWEEN :startDate AND :endDate ORDER BY a.startDate ASC")
     List<Announcement> findPublishedInDateRange(@Param("statuses") List<String> statuses,
                                                 @Param("startDate") LocalDate startDate,
                                                 @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT a FROM Announcement a WHERE a.isDeleted = false ORDER BY a.createdAt DESC")
+    List<Announcement> findAllActive();
+
+    @Query("SELECT a FROM Announcement a WHERE a.id = :id AND a.isDeleted = false")
+    Optional<Announcement> findByIdAndIsDeletedFalse(@Param("id") Long id);
 }

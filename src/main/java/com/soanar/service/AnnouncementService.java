@@ -52,7 +52,7 @@ public class AnnouncementService {
     }
 
     public List<Announcement> listAll() {
-        return announcementRepository.findAll();
+        return announcementRepository.findAllActive();
     }
 
     public List<Announcement> getPublished() {
@@ -151,6 +151,10 @@ public class AnnouncementService {
     }
 
     public Optional<Announcement> findById(Long id) {
+        return announcementRepository.findByIdAndIsDeletedFalse(id);
+    }
+
+    public Optional<Announcement> findAnyById(Long id) {
         return announcementRepository.findById(id);
     }
 
@@ -193,6 +197,14 @@ public class AnnouncementService {
     @Transactional
     public void delete(Long id) {
         announcementRepository.deleteById(id);
+    }
+
+    @Transactional
+    public Announcement softDelete(Long id) {
+        Announcement announcement = announcementRepository.findByIdAndIsDeletedFalse(id).orElseThrow();
+        announcement.setIsDeleted(true);
+        announcement.setDeletedAt(Instant.now());
+        return announcementRepository.save(announcement);
     }
     
     @Transactional
