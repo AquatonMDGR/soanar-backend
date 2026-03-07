@@ -53,7 +53,7 @@ public class AnnouncementService {
     }
 
     public List<Announcement> listAll() {
-        return announcementRepository.findAll();
+        return announcementRepository.findAllActiveOrderByCreatedAtDesc();
     }
 
     public List<Announcement> getPublished() {
@@ -156,7 +156,7 @@ public class AnnouncementService {
     }
 
     public Optional<Announcement> findById(Long id) {
-        return announcementRepository.findById(id);
+        return announcementRepository.findActiveById(id);
     }
 
     @Transactional

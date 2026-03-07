@@ -49,6 +49,13 @@ public class Announcement {
     @JsonProperty("isEmergency")
     private Boolean isEmergency = false;
 
+    @Column(name = "is_deleted", nullable = false)
+    @JsonProperty("isDeleted")
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -133,6 +140,12 @@ public class Announcement {
 
     public Boolean getIsEmergency() { return isEmergency; }
     public void setIsEmergency(Boolean emergency) { this.isEmergency = emergency != null ? emergency : false; }
+
+    public Boolean getIsDeleted() { return isDeleted; }
+    public void setIsDeleted(Boolean deleted) { this.isDeleted = deleted != null ? deleted : false; }
+
+    public Instant getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
