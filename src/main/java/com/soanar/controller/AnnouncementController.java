@@ -291,13 +291,13 @@ public class AnnouncementController {
             String email = jwtUtil.extractEmail(token);
             String role = jwtUtil.extractRole(token);
             
-            // Only the poster or OSAS can delete
+            // Only the poster, OSAS, or Super Admin can delete
             Announcement announcement = announcementService.findById(id)
                     .orElseThrow(() -> new RuntimeException("Announcement not found"));
             
             User poster = announcement.getPostedBy();
-            if (poster == null || (!poster.getSchoolEmail().equals(email) && !"OSAS".equals(role))) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only the poster or OSAS can delete this announcement"));
+            if (poster == null || !canDeleteAnnouncement(poster.getSchoolEmail(), email, role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only the poster, OSAS, or Super Admin can delete this announcement"));
             }
 
             User actor = userService.findByEmail(email).orElse(null);
@@ -319,6 +319,13 @@ public class AnnouncementController {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    @DeleteMapping("/{id}/soft-delete")
+    public ResponseEntity<?> softDelete(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long id) {
+        return delete(authHeader, id);
     }
 
     /**
@@ -375,6 +382,13 @@ public class AnnouncementController {
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private boolean canDeleteAnnouncement(String posterEmail, String actorEmail, String role) {
+        if (posterEmail != null && posterEmail.equals(actorEmail)) {
+            return true;
+        }
+        return "OSAS".equals(role) || "Super Admin".equals(role);
     }
 }
 

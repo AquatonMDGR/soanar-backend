@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -57,7 +58,7 @@ public class AnnouncementService {
     }
 
     public List<Announcement> getPublished() {
-        return announcementRepository.findByStatusIn(java.util.Arrays.asList("PUBLISHED", "APPROVED"));
+        return announcementRepository.findByStatusIn(Arrays.asList("PUBLISHED", "APPROVED"));
     }
 
     public List<Announcement> getPublishedForUser(User user) {
@@ -161,7 +162,7 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement approve(Long id) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("PUBLISHED");
         a.setPublishedAt(Instant.now());
         return announcementRepository.save(a);
@@ -169,7 +170,7 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement approve(Long id, User approver, String notes) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("PUBLISHED");
         a.setPublishedAt(Instant.now());
         a.setApprovedBy(approver);
@@ -180,14 +181,14 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement reject(Long id) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("REJECTED");
         return announcementRepository.save(a);
     }
 
     @Transactional
     public Announcement reject(Long id, User rejector, String rejectionReason) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("REJECTED");
         a.setApprovedBy(rejector);
         a.setApprovedAt(Instant.now());
@@ -197,12 +198,15 @@ public class AnnouncementService {
     
     @Transactional
     public void delete(Long id) {
-        announcementRepository.deleteById(id);
+        Announcement a = getActiveAnnouncementOrThrow(id);
+        a.setIsDeleted(true);
+        a.setDeletedAt(Instant.now());
+        announcementRepository.save(a);
     }
     
     @Transactional
     public void notifyAfterApproval(Long id, boolean approved) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         
         // DEBUG: Check imageUrls after fetch from DB
         System.out.println("DEBUG notifyAfterApproval: imageUrl = " + a.getImageUrl());
@@ -349,5 +353,10 @@ public class AnnouncementService {
         int schoolYearStartYear = now.getMonthValue() >= 6 ? now.getYear() : now.getYear() - 1;
         LocalDate startDate = LocalDate.of(schoolYearStartYear, 6, 1);
         return startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
+    }
+
+    private Announcement getActiveAnnouncementOrThrow(Long id) {
+        return announcementRepository.findActiveById(id)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
     }
 }
