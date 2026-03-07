@@ -118,7 +118,6 @@ public class NotificationService {
      * Notify all students when an announcement is published
      * This is for OSAS and Academic announcements
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
 
@@ -143,7 +142,6 @@ public class NotificationService {
      * Notify distribution group members when a Student Organization publishes
      * Only emails students in the announcement's distribution groups
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyDistributionGroupMembers(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
 
@@ -170,7 +168,6 @@ public class NotificationService {
      * Emergency announcements must reach all active students regardless of targeting
      * and user notification preference toggles.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyAllStudentsEmergency(Announcement announcement) {
         List<User> activeStudents = userRepository.findByRoleAndIsActiveTrue("Student");
         Set<String> recipientEmails = activeStudents.stream()
@@ -318,7 +315,6 @@ public class NotificationService {
      * Notify event creator when their event has been successfully created
      * Provides feedback on whether event is published or pending approval
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyEventCreator(Announcement announcement) {
         if (announcement.getPostedBy() == null) {
             System.err.println("Cannot notify event creator: postedBy is null for announcement " + announcement.getId());

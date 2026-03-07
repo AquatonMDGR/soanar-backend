@@ -53,7 +53,6 @@ public class EmailService {
         this.announcementRepository = announcementRepository;
     }
 
-    @Transactional
     public void sendTargetedEmail(List<String> recipients, String subject, String body) {
         for (String recipient : recipients) {
             try {
@@ -139,12 +138,10 @@ public class EmailService {
         }
     }
 
-    @Transactional
     public void sendTermlyNewsletter(List<String> recipients, String subject, String body) {
         sendTargetedEmail(recipients, subject, body);
     }
 
-    @Transactional
     public Map<String, Object> forceSendUpcomingTermNewsletter() {
         TermWindow nextWindow = getNextTermWindow(LocalDate.now());
         LocalDate termStart = nextWindow.start();
