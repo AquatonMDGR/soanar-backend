@@ -11,6 +11,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,6 +36,9 @@ public class EmailService {
     private final EmailRepository emailRepository;
     private final UserRepository userRepository;
     private final AnnouncementRepository announcementRepository;
+
+    @Value("${frontend.url:http://localhost:3000}")
+    private String frontendUrl;
 
     public EmailService(JavaMailSender mailSender,
                         EmailRepository emailRepository,
@@ -152,7 +156,7 @@ public class EmailService {
                 .toList();
 
         if (!upcoming.isEmpty() && !recipients.isEmpty()) {
-            String subject = "SONAR Upcoming Events for Next Term (" + termStart + " to " + termEnd + ")";
+            String subject = "SOANAR Upcoming Events for Next Term (" + termStart + " to " + termEnd + ")";
             String body = buildUpcomingTermNewsletterHtml(upcoming, termStart, termEnd);
             sendTermlyNewsletter(recipients, subject, body);
         }
@@ -216,7 +220,7 @@ public class EmailService {
         html.append("<tr><td align=\"center\">");
         html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:12px;overflow:hidden;\">");
 
-        html.append("<tr><td style=\"padding:18px 24px;background:#0a66c2;color:#ffffff;font-size:15px;font-weight:700;\">SONAR Updates</td></tr>");
+        html.append("<tr><td style=\"padding:18px 24px;background:#0a66c2;color:#ffffff;font-size:15px;font-weight:700;\">SOANAR Updates</td></tr>");
         html.append("<tr><td style=\"padding:24px 24px 8px;color:#111827;font-size:34px;line-height:1.2;font-weight:700;\">Upcoming Events for Next Term</td></tr>");
         html.append("<tr><td style=\"padding:0 24px 18px;color:#4b5563;font-size:15px;\"><strong>Coverage:</strong> ")
             .append(start)
@@ -241,10 +245,15 @@ public class EmailService {
             html.append("</td></tr>");
         }
 
+        String resolvedFrontendUrl = frontendUrl != null ? frontendUrl.trim() : "http://localhost:3000";
+        if (resolvedFrontendUrl.endsWith("/")) {
+            resolvedFrontendUrl = resolvedFrontendUrl.substring(0, resolvedFrontendUrl.length() - 1);
+        }
+
         html.append("<tr><td align=\"center\" style=\"padding:16px 24px 8px;\">");
-        html.append("<a href=\"https://soanar.app\" style=\"display:inline-block;background:#0a66c2;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:12px 24px;border-radius:999px;\">Open SONAR</a>");
+        html.append("<a href=\"").append(escapeHtml(resolvedFrontendUrl)).append("\" style=\"display:inline-block;background:#0a66c2;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:12px 24px;border-radius:999px;\">Open SOANAR</a>");
         html.append("</td></tr>");
-        html.append("<tr><td style=\"padding:8px 24px 24px;color:#6b7280;font-size:13px;line-height:1.5;text-align:center;\">You are receiving this update because you are enrolled in SONAR notifications.</td></tr>");
+        html.append("<tr><td style=\"padding:8px 24px 24px;color:#6b7280;font-size:13px;line-height:1.5;text-align:center;\">You are receiving this update because you are enrolled in SOANAR notifications.</td></tr>");
 
         html.append("</table>");
         html.append("</td></tr></table>");

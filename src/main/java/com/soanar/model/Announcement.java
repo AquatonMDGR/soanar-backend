@@ -45,6 +45,10 @@ public class Announcement {
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, APPROVED, REJECTED, PUBLISHED
 
+    @Column(name = "is_emergency", nullable = false)
+    @JsonProperty("isEmergency")
+    private Boolean isEmergency = false;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -126,6 +130,9 @@ public class Announcement {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public Boolean getIsEmergency() { return isEmergency; }
+    public void setIsEmergency(Boolean emergency) { this.isEmergency = emergency != null ? emergency : false; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

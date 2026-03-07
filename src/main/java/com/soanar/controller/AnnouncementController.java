@@ -104,6 +104,7 @@ public class AnnouncementController {
             @RequestParam("description") String description,
             @RequestParam(value = "startDate", required = false) String startDate,
             @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "isEmergency", required = false, defaultValue = "false") boolean isEmergency,
             @RequestParam(value = "targeting", required = false) String targeting) {
         
         try {
@@ -112,11 +113,17 @@ public class AnnouncementController {
             
             User poster = userService.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
+
+                if (isEmergency && !"OSAS".equals(poster.getRole()) && !"Academic".equals(poster.getRole())) {
+                return ResponseEntity.status(403)
+                    .body(Map.of("error", "Only OSAS or Academic can post emergency announcements"));
+                }
             
             // Create announcement entity
             Announcement announcement = new Announcement();
             announcement.setTitle(title);
             announcement.setDescription(description);
+            announcement.setIsEmergency(isEmergency);
             
             // Upload files to Supabase storage if provided
             if (files != null && files.length > 0) {

@@ -138,7 +138,11 @@ public class AnnouncementService {
             }
 
             if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
-                notificationService.notifyStudentsOfPublishedAnnouncement(persisted);
+                if (Boolean.TRUE.equals(persisted.getIsEmergency())) {
+                    notificationService.notifyAllStudentsEmergency(persisted);
+                } else {
+                    notificationService.notifyStudentsOfPublishedAnnouncement(persisted);
+                }
                 notificationService.notifyEventCreator(persisted);
             } else if ("Student Organization".equals(posterRole)) {
                 notificationService.notifyOSASOfNewAnnouncement(persisted);
