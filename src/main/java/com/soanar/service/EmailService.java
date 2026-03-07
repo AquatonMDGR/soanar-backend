@@ -40,6 +40,9 @@ public class EmailService {
     @Value("${frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
+    @Value("${MAIL_FROM:${MAIL_USERNAME:}}")
+    private String mailFrom;
+
     public EmailService(JavaMailSender mailSender,
                         EmailRepository emailRepository,
                         UserRepository userRepository,
@@ -93,6 +96,9 @@ public class EmailService {
 
                 MimeMessage mimeMessage = mailSender.createMimeMessage();
                 MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+                if (mailFrom != null && !mailFrom.isBlank()) {
+                    helper.setFrom(mailFrom);
+                }
                 helper.setTo(recipient);
                 helper.setSubject(subject);
                 // Use modifiedBody (with cid: references) as HTML
@@ -121,6 +127,7 @@ public class EmailService {
                 email.setSentAt(Instant.now());
                 emailRepository.save(email);
             } catch (Exception e) {
+                System.err.println("Email send failed for " + recipient + ": " + e.getMessage());
                 Email email = new Email();
                 email.setRecipientEmail(recipient);
                 email.setSubject(subject);

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -120,13 +121,13 @@ public class AnnouncementService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatchPostCreateNotifications(announcementId, posterRole);
+                    CompletableFuture.runAsync(() -> dispatchPostCreateNotifications(announcementId, posterRole));
                 }
             });
             return;
         }
 
-        dispatchPostCreateNotifications(announcementId, posterRole);
+        CompletableFuture.runAsync(() -> dispatchPostCreateNotifications(announcementId, posterRole));
     }
 
     private void dispatchPostCreateNotifications(Long announcementId, String posterRole) {
