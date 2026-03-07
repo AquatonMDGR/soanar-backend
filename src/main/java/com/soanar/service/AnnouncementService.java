@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,7 +53,7 @@ public class AnnouncementService {
     }
 
     public List<Announcement> listAll() {
-        return announcementRepository.findAllActive();
+        return announcementRepository.findAllActiveOrderByCreatedAtDesc();
     }
 
     public List<Announcement> getPublished() {
@@ -120,13 +121,13 @@ public class AnnouncementService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatchPostCreateNotifications(announcementId, posterRole);
+                    CompletableFuture.runAsync(() -> dispatchPostCreateNotifications(announcementId, posterRole));
                 }
             });
             return;
         }
 
-        dispatchPostCreateNotifications(announcementId, posterRole);
+        CompletableFuture.runAsync(() -> dispatchPostCreateNotifications(announcementId, posterRole));
     }
 
     private void dispatchPostCreateNotifications(Long announcementId, String posterRole) {
@@ -138,7 +139,11 @@ public class AnnouncementService {
             }
 
             if ("OSAS".equals(posterRole) || "Academic".equals(posterRole)) {
-                notificationService.notifyStudentsOfPublishedAnnouncement(persisted);
+                if (Boolean.TRUE.equals(persisted.getIsEmergency())) {
+                    notificationService.notifyAllStudentsEmergency(persisted);
+                } else {
+                    notificationService.notifyStudentsOfPublishedAnnouncement(persisted);
+                }
                 notificationService.notifyEventCreator(persisted);
             } else if ("Student Organization".equals(posterRole)) {
                 notificationService.notifyOSASOfNewAnnouncement(persisted);
@@ -151,11 +156,7 @@ public class AnnouncementService {
     }
 
     public Optional<Announcement> findById(Long id) {
-        return announcementRepository.findByIdAndIsDeletedFalse(id);
-    }
-
-    public Optional<Announcement> findAnyById(Long id) {
-        return announcementRepository.findById(id);
+        return announcementRepository.findActiveById(id);
     }
 
     @Transactional
@@ -197,14 +198,6 @@ public class AnnouncementService {
     @Transactional
     public void delete(Long id) {
         announcementRepository.deleteById(id);
-    }
-
-    @Transactional
-    public Announcement softDelete(Long id) {
-        Announcement announcement = announcementRepository.findByIdAndIsDeletedFalse(id).orElseThrow();
-        announcement.setIsDeleted(true);
-        announcement.setDeletedAt(Instant.now());
-        return announcementRepository.save(announcement);
     }
     
     @Transactional

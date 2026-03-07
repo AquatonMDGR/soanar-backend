@@ -3,6 +3,7 @@ package com.soanar.controller;
 import com.soanar.model.Announcement;
 import com.soanar.service.AnnouncementService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,9 @@ public class ShareController {
 
     @Autowired
     private AnnouncementService announcementService;
+
+    @Value("${frontend.url:http://localhost:3000}")
+    private String frontendUrl;
 
     @GetMapping("/announcement/{id}")
     public void shareAnnouncement(@PathVariable Long id, HttpServletResponse response) throws IOException {
@@ -43,8 +47,11 @@ public class ShareController {
                 imageUrl = announcement.getImageUrl();
             }
             
-            String frontendUrl = System.getenv().getOrDefault("FRONTEND_URL", "http://localhost:3000");
-            String announcementUrl = frontendUrl + "/announcement/" + id;
+            String resolvedFrontendUrl = frontendUrl != null ? frontendUrl.trim() : "http://localhost:3000";
+            if (resolvedFrontendUrl.endsWith("/")) {
+                resolvedFrontendUrl = resolvedFrontendUrl.substring(0, resolvedFrontendUrl.length() - 1);
+            }
+            String announcementUrl = resolvedFrontendUrl + "/announcement/" + id;
             
             PrintWriter out = response.getWriter();
             out.println("<!DOCTYPE html>");

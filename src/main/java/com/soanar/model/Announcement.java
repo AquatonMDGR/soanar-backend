@@ -45,14 +45,19 @@ public class Announcement {
     @Column(nullable = false)
     private String status = "PENDING"; // PENDING, APPROVED, REJECTED, PUBLISHED
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt = Instant.now();
+    @Column(name = "is_emergency", nullable = false)
+    @JsonProperty("isEmergency")
+    private Boolean isEmergency = false;
 
     @Column(name = "is_deleted", nullable = false)
+    @JsonProperty("isDeleted")
     private Boolean isDeleted = false;
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt = Instant.now();
 
     @Column(name = "published_at")
     private Instant publishedAt;
@@ -133,14 +138,17 @@ public class Announcement {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Boolean getIsEmergency() { return isEmergency; }
+    public void setIsEmergency(Boolean emergency) { this.isEmergency = emergency != null ? emergency : false; }
 
     public Boolean getIsDeleted() { return isDeleted; }
-    public void setIsDeleted(Boolean deleted) { isDeleted = deleted; }
+    public void setIsDeleted(Boolean deleted) { this.isDeleted = deleted != null ? deleted : false; }
 
     public Instant getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 
     public Instant getPublishedAt() { return publishedAt; }
     public void setPublishedAt(Instant publishedAt) { this.publishedAt = publishedAt; }

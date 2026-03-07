@@ -104,6 +104,7 @@ public class AnnouncementController {
             @RequestParam("description") String description,
             @RequestParam(value = "startDate", required = false) String startDate,
             @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "isEmergency", required = false, defaultValue = "false") boolean isEmergency,
             @RequestParam(value = "targeting", required = false) String targeting) {
         
         try {
@@ -112,11 +113,17 @@ public class AnnouncementController {
             
             User poster = userService.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
+
+                if (isEmergency && !"OSAS".equals(poster.getRole()) && !"Academic".equals(poster.getRole())) {
+                return ResponseEntity.status(403)
+                    .body(Map.of("error", "Only OSAS or Academic can post emergency announcements"));
+                }
             
             // Create announcement entity
             Announcement announcement = new Announcement();
             announcement.setTitle(title);
             announcement.setDescription(description);
+            announcement.setIsEmergency(isEmergency);
             
             // Upload files to Supabase storage if provided
             if (files != null && files.length > 0) {
@@ -308,42 +315,6 @@ public class AnnouncementController {
             
             announcementService.delete(id);
             return ResponseEntity.ok(Map.of("message", "Announcement deleted successfully"));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    @DeleteMapping("/{id}/soft-delete")
-    public ResponseEntity<?> softDelete(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long id) {
-
-        try {
-            String token = authHeader.replace("Bearer ", "");
-            String email = jwtUtil.extractEmail(token);
-            String role = jwtUtil.extractRole(token);
-
-            if (!"Super Admin".equals(role)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only Super Admin can soft-delete announcements"));
-            }
-
-            User actor = userService.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-
-            Announcement announcement = announcementService.softDelete(id);
-
-            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
-            auditLogService.log(
-                actor,
-                organizationId,
-                "SOFT_DELETE",
-                "ANNOUNCEMENT",
-                announcement.getId(),
-                "Soft-deleted announcement: " + announcement.getTitle()
-            );
-
-            return ResponseEntity.ok(Map.of("message", "Announcement soft-deleted successfully"));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));

@@ -9,8 +9,8 @@ import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,6 +27,7 @@ import java.net.http.HttpResponse;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Arrays;
+import java.io.IOException;
 
 @Service
 public class EmailService {
@@ -35,6 +36,27 @@ public class EmailService {
     private final EmailRepository emailRepository;
     private final UserRepository userRepository;
     private final AnnouncementRepository announcementRepository;
+
+    @Value("${frontend.url:http://localhost:3000}")
+    private String frontendUrl;
+
+    @Value("${MAIL_FROM:${MAIL_USERNAME:}}")
+    private String mailFrom;
+
+    @Value("${mail.provider:smtp}")
+    private String mailProvider;
+
+    @Value("${resend.api-key:${RESEND_API_KEY:}}")
+    private String resendApiKey;
+
+    @Value("${resend.api-url:${RESEND_API_URL:https://api.resend.com/emails}}")
+    private String resendApiUrl;
+
+    @Value("${mail.send-timeout-ms:${MAIL_SEND_TIMEOUT_MS:10000}}")
+    private int mailSendTimeoutMs;
+
+    @Value("${mail.from-name:${MAIL_FROM_NAME:SOANAR}}")
+    private String mailFromName;
 
     public EmailService(JavaMailSender mailSender,
                         EmailRepository emailRepository,
@@ -46,68 +68,10 @@ public class EmailService {
         this.announcementRepository = announcementRepository;
     }
 
-    @Transactional
     public void sendTargetedEmail(List<String> recipients, String subject, String body) {
         for (String recipient : recipients) {
             try {
-                // Detect remote image URLs in the HTML body
-                String modifiedBody = body != null ? body : "";
-                Pattern imgPattern = Pattern.compile("<img[^>]+src=[\"'](https?://[^\"']+)[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
-                Matcher matcher = imgPattern.matcher(modifiedBody);
-                List<String> urls = new ArrayList<>();
-                while (matcher.find()) {
-                    String url = matcher.group(1);
-                    if (!urls.contains(url)) urls.add(url);
-                }
-
-                Map<String, byte[]> cidToBytes = new HashMap<>();
-                Map<String, String> cidToContentType = new HashMap<>();
-
-                if (!urls.isEmpty()) {
-                    HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-                    int i = 0;
-                    for (String url : urls) {
-                        try {
-                            HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(15)).GET().build();
-                            HttpResponse<byte[]> resp = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
-                            if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
-                                byte[] bytes = resp.body();
-                                String contentType = resp.headers().firstValue("content-type").orElse("image/png");
-                                String cid = "img" + i;
-                                cidToBytes.put(cid, bytes);
-                                cidToContentType.put(cid, contentType);
-                                // replace occurrences of the URL in the body with cid reference
-                                modifiedBody = modifiedBody.replace(url, "cid:" + cid);
-                                i++;
-                            }
-                        } catch (Exception ex) {
-                            // If download fails, skip and leave original URL
-                            System.err.println("Warning: failed to download inline image " + url + ": " + ex.getMessage());
-                        }
-                    }
-                }
-
-                MimeMessage mimeMessage = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-                helper.setTo(recipient);
-                helper.setSubject(subject);
-                // Use modifiedBody (with cid: references) as HTML
-                helper.setText(modifiedBody, true);
-
-                // Attach any downloaded images as inline resources
-                for (Map.Entry<String, byte[]> e : cidToBytes.entrySet()) {
-                    String cid = e.getKey();
-                    byte[] bytes = e.getValue();
-                    String ct = cidToContentType.getOrDefault(cid, "image/png");
-                    ByteArrayResource resource = new ByteArrayResource(bytes);
-                    try {
-                        helper.addInline(cid, resource, ct);
-                    } catch (Exception ex) {
-                        System.err.println("Warning: failed to attach inline image cid=" + cid + ": " + ex.getMessage());
-                    }
-                }
-
-                mailSender.send(mimeMessage);
+                deliverEmail(recipient, subject, body);
 
                 Email email = new Email();
                 email.setRecipientEmail(recipient);
@@ -117,6 +81,7 @@ public class EmailService {
                 email.setSentAt(Instant.now());
                 emailRepository.save(email);
             } catch (Exception e) {
+                System.err.println("Email send failed for " + recipient + ": " + e.getMessage());
                 Email email = new Email();
                 email.setRecipientEmail(recipient);
                 email.setSubject(subject);
@@ -128,12 +93,146 @@ public class EmailService {
         }
     }
 
-    @Transactional
+    private String deliverEmail(String recipient, String subject, String body) throws Exception {
+        String provider = mailProvider != null ? mailProvider.trim().toLowerCase() : "smtp";
+        boolean resendConfigured = resendApiKey != null && !resendApiKey.isBlank();
+
+        if ("resend".equals(provider)) {
+            sendViaResend(recipient, subject, body);
+            return "RESEND";
+        }
+
+        if ("auto".equals(provider)) {
+            try {
+                sendViaSmtp(recipient, subject, body);
+                return "SMTP";
+            } catch (Exception smtpEx) {
+                if (!resendConfigured) {
+                    throw smtpEx;
+                }
+                System.err.println("SMTP delivery failed, retrying with Resend for " + recipient + ": " + smtpEx.getMessage());
+                sendViaResend(recipient, subject, body);
+                return "RESEND";
+            }
+        }
+
+        sendViaSmtp(recipient, subject, body);
+        return "SMTP";
+    }
+
+    private void sendViaSmtp(String recipient, String subject, String body) throws Exception {
+        String modifiedBody = body != null ? body : "";
+        Pattern imgPattern = Pattern.compile("<img[^>]+src=[\"'](https?://[^\"']+)[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = imgPattern.matcher(modifiedBody);
+        List<String> urls = new ArrayList<>();
+        while (matcher.find()) {
+            String url = matcher.group(1);
+            if (!urls.contains(url)) urls.add(url);
+        }
+
+        Map<String, byte[]> cidToBytes = new HashMap<>();
+        Map<String, String> cidToContentType = new HashMap<>();
+
+        if (!urls.isEmpty()) {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+            int i = 0;
+            for (String url : urls) {
+                try {
+                    HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(15)).GET().build();
+                    HttpResponse<byte[]> resp = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
+                    if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
+                        byte[] bytes = resp.body();
+                        String contentType = resp.headers().firstValue("content-type").orElse("image/png");
+                        String cid = "img" + i;
+                        cidToBytes.put(cid, bytes);
+                        cidToContentType.put(cid, contentType);
+                        modifiedBody = modifiedBody.replace(url, "cid:" + cid);
+                        i++;
+                    }
+                } catch (Exception ex) {
+                    System.err.println("Warning: failed to download inline image " + url + ": " + ex.getMessage());
+                }
+            }
+        }
+
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+        if (mailFrom != null && !mailFrom.isBlank()) {
+            helper.setFrom(mailFrom);
+        }
+        helper.setTo(recipient);
+        helper.setSubject(subject);
+        helper.setText(modifiedBody, true);
+
+        for (Map.Entry<String, byte[]> e : cidToBytes.entrySet()) {
+            String cid = e.getKey();
+            byte[] bytes = e.getValue();
+            String ct = cidToContentType.getOrDefault(cid, "image/png");
+            ByteArrayResource resource = new ByteArrayResource(bytes);
+            try {
+                helper.addInline(cid, resource, ct);
+            } catch (Exception ex) {
+                System.err.println("Warning: failed to attach inline image cid=" + cid + ": " + ex.getMessage());
+            }
+        }
+
+        mailSender.send(mimeMessage);
+    }
+
+    private void sendViaResend(String recipient, String subject, String body) throws IOException, InterruptedException {
+        if (resendApiKey == null || resendApiKey.isBlank()) {
+            throw new IllegalStateException("RESEND_API_KEY is not configured");
+        }
+        if (mailFrom == null || mailFrom.isBlank()) {
+            throw new IllegalStateException("MAIL_FROM (or MAIL_USERNAME) is required for Resend sender");
+        }
+
+        String from = (mailFromName != null && !mailFromName.isBlank())
+                ? mailFromName + " <" + mailFrom + ">"
+                : mailFrom;
+
+        String html = body != null ? body : "";
+        String payload = "{"
+                + "\"from\":\"" + jsonEscape(from) + "\"," 
+                + "\"to\":[\"" + jsonEscape(recipient) + "\"],"
+                + "\"subject\":\"" + jsonEscape(subject != null ? subject : "") + "\"," 
+                + "\"html\":\"" + jsonEscape(html) + "\""
+                + "}";
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .build();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(resendApiUrl))
+                .header("Authorization", "Bearer " + resendApiKey)
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Resend API failed (" + response.statusCode() + "): " + response.body());
+        }
+    }
+
+    private String jsonEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
     public void sendTermlyNewsletter(List<String> recipients, String subject, String body) {
         sendTargetedEmail(recipients, subject, body);
     }
 
-    @Transactional
     public Map<String, Object> forceSendUpcomingTermNewsletter() {
         TermWindow nextWindow = getNextTermWindow(LocalDate.now());
         LocalDate termStart = nextWindow.start();
@@ -152,7 +251,7 @@ public class EmailService {
                 .toList();
 
         if (!upcoming.isEmpty() && !recipients.isEmpty()) {
-            String subject = "SONAR Upcoming Events for Next Term (" + termStart + " to " + termEnd + ")";
+            String subject = "SOANAR Upcoming Events for Next Term (" + termStart + " to " + termEnd + ")";
             String body = buildUpcomingTermNewsletterHtml(upcoming, termStart, termEnd);
             sendTermlyNewsletter(recipients, subject, body);
         }
@@ -216,7 +315,7 @@ public class EmailService {
         html.append("<tr><td align=\"center\">");
         html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:12px;overflow:hidden;\">");
 
-        html.append("<tr><td style=\"padding:18px 24px;background:#0a66c2;color:#ffffff;font-size:15px;font-weight:700;\">SONAR Updates</td></tr>");
+        html.append("<tr><td style=\"padding:18px 24px;background:#0a66c2;color:#ffffff;font-size:15px;font-weight:700;\">SOANAR Updates</td></tr>");
         html.append("<tr><td style=\"padding:24px 24px 8px;color:#111827;font-size:34px;line-height:1.2;font-weight:700;\">Upcoming Events for Next Term</td></tr>");
         html.append("<tr><td style=\"padding:0 24px 18px;color:#4b5563;font-size:15px;\"><strong>Coverage:</strong> ")
             .append(start)
@@ -241,10 +340,15 @@ public class EmailService {
             html.append("</td></tr>");
         }
 
+        String resolvedFrontendUrl = frontendUrl != null ? frontendUrl.trim() : "http://localhost:3000";
+        if (resolvedFrontendUrl.endsWith("/")) {
+            resolvedFrontendUrl = resolvedFrontendUrl.substring(0, resolvedFrontendUrl.length() - 1);
+        }
+
         html.append("<tr><td align=\"center\" style=\"padding:16px 24px 8px;\">");
-        html.append("<a href=\"https://soanar.app\" style=\"display:inline-block;background:#0a66c2;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:12px 24px;border-radius:999px;\">Open SONAR</a>");
+        html.append("<a href=\"").append(escapeHtml(resolvedFrontendUrl)).append("\" style=\"display:inline-block;background:#0a66c2;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:12px 24px;border-radius:999px;\">Open SOANAR</a>");
         html.append("</td></tr>");
-        html.append("<tr><td style=\"padding:8px 24px 24px;color:#6b7280;font-size:13px;line-height:1.5;text-align:center;\">You are receiving this update because you are enrolled in SONAR notifications.</td></tr>");
+        html.append("<tr><td style=\"padding:8px 24px 24px;color:#6b7280;font-size:13px;line-height:1.5;text-align:center;\">You are receiving this update because you are enrolled in SOANAR notifications.</td></tr>");
 
         html.append("</table>");
         html.append("</td></tr></table>");

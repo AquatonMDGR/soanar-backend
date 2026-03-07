@@ -118,7 +118,6 @@ public class NotificationService {
      * Notify all students when an announcement is published
      * This is for OSAS and Academic announcements
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
 
@@ -143,7 +142,6 @@ public class NotificationService {
      * Notify distribution group members when a Student Organization publishes
      * Only emails students in the announcement's distribution groups
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyDistributionGroupMembers(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
 
@@ -165,6 +163,36 @@ public class NotificationService {
             System.out.println("No recipients found for announcement: " + announcement.getId());
         }
     }
+
+    /**
+     * Emergency announcements must reach all active students regardless of targeting
+     * and user notification preference toggles.
+     */
+    public void notifyAllStudentsEmergency(Announcement announcement) {
+        List<User> activeStudents = userRepository.findByRoleAndIsActiveTrue("Student");
+        Set<String> recipientEmails = activeStudents.stream()
+                .map(User::getSchoolEmail)
+                .filter(email -> email != null && !email.isBlank())
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
+
+        for (String email : recipientEmails) {
+            createNotification(
+                announcement,
+                email,
+                "announcement",
+                "Emergency Announcement: " + announcement.getTitle(),
+                announcement.getDescription()
+            );
+        }
+
+        if (!recipientEmails.isEmpty()) {
+            String subject = "[EMERGENCY] " + announcement.getTitle();
+            String html = buildEmailHtmlBody(announcement);
+            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
+        }
+    }
     
     /**
      * Build a formatted email body for announcements
@@ -180,9 +208,9 @@ public class NotificationService {
             body.append("Posted by: ").append(announcement.getPostedBy().getName()).append("\n");
         }
         
-        body.append("\nLog in to SONAR to view more details.\n\n");
+        body.append("\nLog in to SOANAR to view more details.\n\n");
         body.append("Best regards,\n");
-        body.append("SONAR - Student Organization & Notification Announcement Resource");
+        body.append("SOANAR - Student Organization & Notification Announcement Resource");
         
         return body.toString();
     }
@@ -233,8 +261,8 @@ public class NotificationService {
         html.append("<tr><td style=\"padding:16px 28px 0;color:#4b5563;font-size:15px;\">Posted by: ")
             .append(posterName)
             .append("</td></tr>");
-        html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SONAR to view more details.</td></tr>");
-        html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SONAR</td></tr>");
+        html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SOANAR to view more details.</td></tr>");
+        html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SOANAR</td></tr>");
         html.append("</table>");
         html.append("</td></tr></table>");
         html.append("</body></html>");
@@ -287,7 +315,6 @@ public class NotificationService {
      * Notify event creator when their event has been successfully created
      * Provides feedback on whether event is published or pending approval
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyEventCreator(Announcement announcement) {
         if (announcement.getPostedBy() == null) {
             System.err.println("Cannot notify event creator: postedBy is null for announcement " + announcement.getId());
@@ -354,8 +381,8 @@ public class NotificationService {
             html.append("<tr><td style=\"padding:8px 28px 0;color:#374151;font-size:15px;line-height:1.65;\">")
                 .append(nl2br(escapeHtml(announcement.getDescription())))
                 .append("</td></tr>");
-            html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SONAR to view more details.</td></tr>");
-            html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SONAR</td></tr>");
+            html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SOANAR to view more details.</td></tr>");
+            html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SOANAR</td></tr>");
             html.append("</table></td></tr></table>");
             html.append("</body></html>");
 
