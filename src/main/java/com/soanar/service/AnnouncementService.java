@@ -24,10 +24,17 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class AnnouncementService {
+
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s]+$");
+    private static final Pattern URL_IN_TEXT_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s]+");
+    private static final int URL_MAX_READABLE_LENGTH = 40;
+    private static final int URL_SUFFIX_LENGTH = 4;
 
     private final AnnouncementRepository announcementRepository;
     private final NotificationService notificationService;
@@ -75,6 +82,8 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement create(Announcement a, User poster) {
+        a.setDescription(shortenLongUrlsInDescription(a.getDescription()));
+
         // Set the poster - Spring Data JPA will manage the relationship
         a.setPostedBy(poster);
         String posterRole = poster.getRole();
@@ -353,6 +362,51 @@ public class AnnouncementService {
         int schoolYearStartYear = now.getMonthValue() >= 6 ? now.getYear() : now.getYear() - 1;
         LocalDate startDate = LocalDate.of(schoolYearStartYear, 6, 1);
         return startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
+    }
+
+    String shortenLongUrlsInDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return description;
+        }
+
+        Matcher matcher = URL_IN_TEXT_PATTERN.matcher(description);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String matched = matcher.group();
+            String trailing = extractTrailingPunctuation(matched);
+            String urlOnly = trailing.isEmpty() ? matched : matched.substring(0, matched.length() - trailing.length());
+            String shortened = shortenUrlIfNeeded(urlOnly) + trailing;
+            matcher.appendReplacement(result, Matcher.quoteReplacement(shortened));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    private String shortenUrlIfNeeded(String url) {
+        if (url == null || url.length() <= URL_MAX_READABLE_LENGTH) {
+            return url;
+        }
+
+        int prefixLength = Math.max(20, URL_MAX_READABLE_LENGTH - URL_SUFFIX_LENGTH - 3);
+        prefixLength = Math.min(prefixLength, url.length() - URL_SUFFIX_LENGTH - 3);
+
+        if (prefixLength <= 0) {
+            return url;
+        }
+
+        return url.substring(0, prefixLength) + "..." + url.substring(url.length() - URL_SUFFIX_LENGTH);
+    }
+
+    private String extractTrailingPunctuation(String candidate) {
+        if (candidate == null || candidate.isEmpty() || URL_PATTERN.matcher(candidate).matches()) {
+            return "";
+        }
+
+        int i = candidate.length() - 1;
+        while (i >= 0 && ".,;:!?)]}".indexOf(candidate.charAt(i)) >= 0) {
+            i--;
+        }
+        return i == candidate.length() - 1 ? "" : candidate.substring(i + 1);
     }
 
     private Announcement getActiveAnnouncementOrThrow(Long id) {
