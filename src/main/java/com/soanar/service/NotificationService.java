@@ -3,12 +3,9 @@ package com.soanar.service;
 import com.soanar.model.Announcement;
 import com.soanar.model.Notification;
 import com.soanar.model.User;
-import com.soanar.model.DistributionGroup;
-import com.soanar.model.DistributionGroupMember;
 import com.soanar.model.NotificationPreference;
 import com.soanar.repository.NotificationRepository;
 import com.soanar.repository.UserRepository;
-import com.soanar.repository.DistributionGroupMemberRepository;
 import com.soanar.repository.NotificationPreferenceRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,22 +25,27 @@ import java.util.stream.Collectors;
 @Service
 public class NotificationService {
 
+    // Some deployed databases still use legacy VARCHAR sizes in notifications.
+    private static final int LEGACY_RECIPIENT_MAX = 255;
+    private static final int LEGACY_TITLE_MAX = 255;
+    private static final int LEGACY_MESSAGE_MAX = 255;
+    private static final int LEGACY_TYPE_MAX = 50;
+    private static final int LEGACY_ENTITY_TYPE_MAX = 50;
+    private static final int NOTIFICATION_DESCRIPTION_SNIPPET_MAX = 180;
+
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
-    private final DistributionGroupMemberRepository distributionGroupMemberRepository;
     private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final EmailService emailService;
     private final RecipientResolverService recipientResolverService;
 
     public NotificationService(NotificationRepository notificationRepository, 
                                UserRepository userRepository,
-                               DistributionGroupMemberRepository distributionGroupMemberRepository,
                                NotificationPreferenceRepository notificationPreferenceRepository,
                                EmailService emailService,
                                RecipientResolverService recipientResolverService) {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
-        this.distributionGroupMemberRepository = distributionGroupMemberRepository;
         this.notificationPreferenceRepository = notificationPreferenceRepository;
         this.emailService = emailService;
         this.recipientResolverService = recipientResolverService;
@@ -63,6 +65,7 @@ public class NotificationService {
             notification.setEntityType("ANNOUNCEMENT");
             notification.setEntityId(announcement.getId());
         }
+        applyLegacyColumnSafety(notification);
         userRepository.findBySchoolEmail(recipientEmail).ifPresent(notification::setUser);
         notificationRepository.save(notification);
     }
@@ -78,7 +81,7 @@ public class NotificationService {
         notification.setType("announcement");
         if (announcement != null) {
             notification.setTitle("New Announcement: " + announcement.getTitle());
-            notification.setBody(announcement.getDescription());
+            notification.setBody(buildAnnouncementNotificationPreview(announcement));
         }
         if (announcement != null && announcement.getId() != null) {
             notification.setActionUrl("/announcement/" + announcement.getId());
@@ -86,6 +89,7 @@ public class NotificationService {
             notification.setEntityId(announcement.getId());
         }
         notification.setCreatedAt(Instant.now());
+        applyLegacyColumnSafety(notification);
         userRepository.findBySchoolEmail(recipientEmail).ifPresent(notification::setUser);
         notificationRepository.save(notification);
     }
@@ -120,6 +124,7 @@ public class NotificationService {
      */
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
+        String notificationPreview = buildAnnouncementNotificationPreview(announcement);
 
         for (String email : recipientEmails) {
             createNotification(
@@ -127,7 +132,7 @@ public class NotificationService {
                 email,
                 "announcement",
                 "New Announcement: " + announcement.getTitle(),
-                announcement.getDescription()
+                notificationPreview
             );
         }
 
@@ -144,6 +149,7 @@ public class NotificationService {
      */
     public void notifyDistributionGroupMembers(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
+        String notificationPreview = buildAnnouncementNotificationPreview(announcement);
 
         for (String email : recipientEmails) {
             createNotification(
@@ -151,7 +157,7 @@ public class NotificationService {
                 email,
                 "announcement",
                 "New Announcement: " + announcement.getTitle(),
-                announcement.getDescription()
+                notificationPreview
             );
         }
 
@@ -170,6 +176,7 @@ public class NotificationService {
      */
     public void notifyAllStudentsEmergency(Announcement announcement) {
         List<User> activeStudents = userRepository.findByRoleAndIsActiveTrue("Student");
+        String notificationPreview = buildAnnouncementNotificationPreview(announcement);
         Set<String> recipientEmails = activeStudents.stream()
                 .map(User::getSchoolEmail)
                 .filter(email -> email != null && !email.isBlank())
@@ -183,7 +190,7 @@ public class NotificationService {
                 email,
                 "announcement",
                 "Emergency Announcement: " + announcement.getTitle(),
-                announcement.getDescription()
+                notificationPreview
             );
         }
 
@@ -406,6 +413,7 @@ public class NotificationService {
         }
         
         Notification notification = new Notification(user, user.getSchoolEmail(), type, title, body, actionUrl, entityType, entityId);
+        applyLegacyColumnSafety(notification);
         notification = notificationRepository.save(notification);
         
         // Send email if enabled
@@ -517,6 +525,49 @@ public class NotificationService {
         return userRepository.findBySchoolEmail(recipientEmail)
             .map(user -> Boolean.FALSE.equals(user.getIsActive()))
             .orElse(false);
+    }
+
+    private void applyLegacyColumnSafety(Notification notification) {
+        notification.setRecipientEmail(limit(notification.getRecipientEmail(), LEGACY_RECIPIENT_MAX));
+        notification.setType(limit(notification.getType(), LEGACY_TYPE_MAX));
+        notification.setTitle(limit(notification.getTitle(), LEGACY_TITLE_MAX));
+        notification.setEntityType(limit(notification.getEntityType(), LEGACY_ENTITY_TYPE_MAX));
+
+        String fullBody = notification.getBody();
+        if (fullBody != null) {
+            String legacyMessage = limit(fullBody, LEGACY_MESSAGE_MAX);
+            notification.setMessage(legacyMessage);
+            notification.setBody(fullBody);
+        }
+    }
+
+    private String limit(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
+    private String buildAnnouncementNotificationPreview(Announcement announcement) {
+        if (announcement == null) {
+            return "A new announcement has been posted.";
+        }
+
+        String description = announcement.getDescription();
+        if (description == null) {
+            return "A new announcement has been posted.";
+        }
+
+        String normalized = description.trim().replaceAll("\\s+", " ");
+        if (normalized.isEmpty()) {
+            return "A new announcement has been posted.";
+        }
+
+        if (normalized.length() <= NOTIFICATION_DESCRIPTION_SNIPPET_MAX) {
+            return normalized;
+        }
+
+        return normalized.substring(0, NOTIFICATION_DESCRIPTION_SNIPPET_MAX - 1) + "...";
     }
     
     /**

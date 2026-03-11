@@ -98,15 +98,13 @@ public class Notification {
     public void setTitle(String title) { this.title = title; }
 
     public String getBody() { return body; }
-    public void setBody(String body) { 
+    public void setBody(String body) {
         this.body = body;
-        this.message = body;  // Keep message in sync
     }
 
     public String getMessage() { return message; }
-    public void setMessage(String message) { 
+    public void setMessage(String message) {
         this.message = message;
-        this.body = message;  // Keep body in sync
     }
 
     public String getActionUrl() { return actionUrl; }

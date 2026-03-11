@@ -142,7 +142,9 @@ public class AnnouncementService {
 
     private void dispatchPostCreateNotifications(Long announcementId, String posterRole) {
         try {
-            Announcement persisted = announcementRepository.findById(announcementId).orElse(null);
+            Announcement persisted = announcementRepository
+                    .findActiveByIdWithNotificationRelations(announcementId)
+                    .orElse(null);
             if (persisted == null) {
                 System.err.println("Warning: Announcement not found for notification dispatch: " + announcementId);
                 return;

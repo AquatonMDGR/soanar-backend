@@ -6,6 +6,7 @@ import com.soanar.model.DistributionGroupMember;
 import com.soanar.model.User;
 import com.soanar.repository.DistributionGroupMemberRepository;
 import com.soanar.repository.UserRepository;
+import org.hibernate.LazyInitializationException;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashSet;
@@ -127,7 +128,17 @@ public class RecipientResolverService {
     private Set<DistributionGroup> safeDistributionGroups(Announcement announcement) {
         try {
             Set<DistributionGroup> groups = announcement.getDistributionGroups();
-            return groups != null ? groups : Collections.emptySet();
+            if (groups == null || groups.isEmpty()) {
+                return Collections.emptySet();
+            }
+
+            // Materialize the collection while it's still safe to access; this avoids
+            // leaking a lazy proxy into later checks when notification dispatch runs async.
+            return new LinkedHashSet<>(groups);
+        } catch (LazyInitializationException ex) {
+            Long announcementId = announcement != null ? announcement.getId() : null;
+            System.err.println("Warning: distribution groups are lazy and unavailable for announcement " + announcementId + ". Continuing without group targets.");
+            return Collections.emptySet();
         } catch (Exception ex) {
             Long announcementId = announcement != null ? announcement.getId() : null;
             System.err.println("Warning: unable to resolve distribution groups for announcement " + announcementId + ": " + ex.getMessage());
