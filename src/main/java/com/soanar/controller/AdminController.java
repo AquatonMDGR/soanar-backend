@@ -141,6 +141,64 @@ public class AdminController {
         }
     }
 
+    @PutMapping("/users/student-profile")
+    public ResponseEntity<?> updateStudentProfile(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody Map<String, String> body) {
+
+        String token = authHeader.replace("Bearer ", "");
+        String role = jwtUtil.extractRole(token);
+
+        if (!"Super Admin".equals(role)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        String email = body.get("email");
+        String yearLevel = body.get("yearLevel");
+        String school = body.get("school");
+
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
+        }
+        if (yearLevel == null || yearLevel.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Year level is required"));
+        }
+        if (school == null || school.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "School is required"));
+        }
+
+        try {
+            String actorEmail = jwtUtil.extractEmail(token);
+            User actor = userService.findByEmail(actorEmail)
+                .orElseThrow(() -> new RuntimeException("Acting user not found"));
+            User targetBefore = userService.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+            String oldValues = "yearLevel=" + (targetBefore.getYearLevel() == null ? "" : targetBefore.getYearLevel())
+                    + ",school=" + (targetBefore.getSchool() == null ? "" : targetBefore.getSchool());
+            User updatedUser = adminService.updateStudentProfileFields(email, yearLevel, school);
+            String newValues = "yearLevel=" + (updatedUser.getYearLevel() == null ? "" : updatedUser.getYearLevel())
+                    + ",school=" + (updatedUser.getSchool() == null ? "" : updatedUser.getSchool());
+
+            String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
+            auditLogService.log(
+                actor,
+                organizationId,
+                "UPDATE",
+                "USER",
+                updatedUser.getId(),
+                oldValues,
+                newValues,
+                "Updated student profile fields for " + updatedUser.getSchoolEmail(),
+                null
+            );
+
+            return ResponseEntity.ok(Map.of("message", "Student profile updated successfully"));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
+    }
+
     @GetMapping("/logs")
     public ResponseEntity<?> getAuditLogs(@RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");

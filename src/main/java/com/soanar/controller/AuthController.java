@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
+import com.soanar.service.AnnouncementService;
 import com.soanar.service.UserService;
 import com.soanar.service.OrganizationSettingsService;
 import com.soanar.util.JwtUtil;
@@ -24,11 +25,13 @@ public class AuthController {
     private final UserService userService;
     private final OrganizationSettingsService organizationSettingsService;
     private final JwtUtil jwtUtil;
+    private final AnnouncementService announcementService;
 
-    public AuthController(UserService userService, OrganizationSettingsService organizationSettingsService, JwtUtil jwtUtil) {
+    public AuthController(UserService userService, OrganizationSettingsService organizationSettingsService, JwtUtil jwtUtil, AnnouncementService announcementService) {
         this.userService = userService;
         this.organizationSettingsService = organizationSettingsService;
         this.jwtUtil = jwtUtil;
+        this.announcementService = announcementService;
     }
 
     @PostMapping("/login")
@@ -55,9 +58,9 @@ public class AuthController {
             String picture = (String) googleResponse.getOrDefault("picture", "");
 
             // Email domain validation - only @iacademy.edu.ph emails allowed
-            if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only @iacademy.edu.ph emails are allowed"));
-            }
+            // if (!email.toLowerCase().endsWith("@iacademy.edu.ph")) {
+            //     return ResponseEntity.status(403).body(Map.of("error", "Only @iacademy.edu.ph emails are allowed"));
+            // }
 
             // Get or create user
             String role = "Student";
@@ -77,6 +80,11 @@ public class AuthController {
 
             // Keep profile data synced with latest Google account metadata.
             var savedUser = userService.createOrUpdate(email, role, name, resolvedPhotoUrl);
+
+            // Refresh posterPhotoSnapshot on all of this user's posts so the latest photo URL is always shown.
+            try {
+                announcementService.refreshPosterPhotoForUser(savedUser);
+            } catch (Exception ignored) {}
 
             // Generate JWT
             String token = jwtUtil.generateToken(email, role);

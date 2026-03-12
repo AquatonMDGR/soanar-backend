@@ -2,9 +2,12 @@ package com.soanar.service;
 
 import com.soanar.model.Email;
 import com.soanar.model.Announcement;
+import com.soanar.model.OrganizationSettings;
+import com.soanar.model.User;
 import com.soanar.repository.EmailRepository;
 import com.soanar.repository.UserRepository;
 import com.soanar.repository.AnnouncementRepository;
+import com.soanar.repository.NotificationPreferenceRepository;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -14,11 +17,13 @@ import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.YearMonth;
+import java.time.MonthDay;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.net.http.HttpClient;
@@ -36,6 +41,15 @@ public class EmailService {
     private final EmailRepository emailRepository;
     private final UserRepository userRepository;
     private final AnnouncementRepository announcementRepository;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
+    private final OrganizationSettingsService organizationSettingsService;
+
+    private static final String DEFAULT_TERM_1_START = "01-01";
+    private static final String DEFAULT_TERM_1_END = "03-31";
+    private static final String DEFAULT_TERM_2_START = "04-01";
+    private static final String DEFAULT_TERM_2_END = "07-31";
+    private static final String DEFAULT_TERM_3_START = "08-01";
+    private static final String DEFAULT_TERM_3_END = "12-31";
 
     @Value("${frontend.url:http://localhost:3000}")
     private String frontendUrl;
@@ -61,11 +75,15 @@ public class EmailService {
     public EmailService(JavaMailSender mailSender,
                         EmailRepository emailRepository,
                         UserRepository userRepository,
-                        AnnouncementRepository announcementRepository) {
+                        AnnouncementRepository announcementRepository,
+                        NotificationPreferenceRepository notificationPreferenceRepository,
+                        OrganizationSettingsService organizationSettingsService) {
         this.mailSender = mailSender;
         this.emailRepository = emailRepository;
         this.userRepository = userRepository;
         this.announcementRepository = announcementRepository;
+        this.notificationPreferenceRepository = notificationPreferenceRepository;
+        this.organizationSettingsService = organizationSettingsService;
     }
 
     public void sendTargetedEmail(List<String> recipients, String subject, String body) {
@@ -233,10 +251,48 @@ public class EmailService {
         sendTargetedEmail(recipients, subject, body);
     }
 
+    public Map<String, Object> getTermCoverageSettings() {
+        List<TermDefinition> terms = getConfiguredTerms();
+        return Map.of(
+                "term1", Map.of("start", formatMonthDay(terms.get(0).start()), "end", formatMonthDay(terms.get(0).end())),
+                "term2", Map.of("start", formatMonthDay(terms.get(1).start()), "end", formatMonthDay(terms.get(1).end())),
+                "term3", Map.of("start", formatMonthDay(terms.get(2).start()), "end", formatMonthDay(terms.get(2).end()))
+        );
+    }
+
+    public Map<String, Object> updateTermCoverageSettings(Map<String, String> payload) {
+        MonthDay term1Start = parseMonthDayRequired(payload.get("term1Start"), "term1Start");
+        MonthDay term1End = parseMonthDayRequired(payload.get("term1End"), "term1End");
+        MonthDay term2Start = parseMonthDayRequired(payload.get("term2Start"), "term2Start");
+        MonthDay term2End = parseMonthDayRequired(payload.get("term2End"), "term2End");
+        MonthDay term3Start = parseMonthDayRequired(payload.get("term3Start"), "term3Start");
+        MonthDay term3End = parseMonthDayRequired(payload.get("term3End"), "term3End");
+
+        List<TermDefinition> terms = List.of(
+                new TermDefinition(1, term1Start, term1End),
+                new TermDefinition(2, term2Start, term2End),
+                new TermDefinition(3, term3Start, term3End)
+        );
+        validateNonOverlappingTerms(terms);
+
+        OrganizationSettings settings = organizationSettingsService.getOrCreateDefaultSettings();
+        settings.setTerm1StartMonthDay(formatMonthDay(term1Start));
+        settings.setTerm1EndMonthDay(formatMonthDay(term1End));
+        settings.setTerm2StartMonthDay(formatMonthDay(term2Start));
+        settings.setTerm2EndMonthDay(formatMonthDay(term2End));
+        settings.setTerm3StartMonthDay(formatMonthDay(term3Start));
+        settings.setTerm3EndMonthDay(formatMonthDay(term3End));
+        organizationSettingsService.createOrUpdateSettings(settings);
+
+        return getTermCoverageSettings();
+    }
+
     public Map<String, Object> forceSendUpcomingTermNewsletter() {
-        TermWindow nextWindow = getNextTermWindow(LocalDate.now());
+        ConfiguredTermWindow nextWindow = resolveNextConfiguredTermWindow(LocalDate.now());
         LocalDate termStart = nextWindow.start();
         LocalDate termEnd = nextWindow.end();
+        String termLabel = "Term " + nextWindow.termNumber();
+        String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
 
         List<Announcement> upcoming = announcementRepository.findPublishedInDateRange(
                 Arrays.asList("PUBLISHED", "APPROVED"),
@@ -244,15 +300,16 @@ public class EmailService {
                 termEnd
         );
 
-        List<String> recipients = userRepository.findByRole("Student").stream()
-                .map(user -> user.getSchoolEmail())
+        List<String> recipients = userRepository.findByRoleAndIsActiveTrue("Student").stream()
+            .filter(user -> isEmailEnabledForUser(user, organizationId))
+            .map(User::getSchoolEmail)
                 .filter(email -> email != null && !email.isBlank())
                 .distinct()
                 .toList();
 
         if (!upcoming.isEmpty() && !recipients.isEmpty()) {
-            String subject = "SOANAR Upcoming Events for Next Term (" + termStart + " to " + termEnd + ")";
-            String body = buildUpcomingTermNewsletterHtml(upcoming, termStart, termEnd);
+            String subject = "SOANAR Upcoming Events for " + termLabel + " (" + termStart + " to " + termEnd + ")";
+            String body = buildUpcomingTermNewsletterHtml(upcoming, termStart, termEnd, termLabel);
             sendTermlyNewsletter(recipients, subject, body);
         }
 
@@ -268,6 +325,7 @@ public class EmailService {
 
         return Map.of(
                 "message", message,
+                "termLabel", termLabel,
                 "termStart", termStart.toString(),
                 "termEnd", termEnd.toString(),
                 "eventsIncluded", upcoming.size(),
@@ -276,39 +334,177 @@ public class EmailService {
         );
     }
 
-    private TermWindow getNextTermWindow(LocalDate referenceDate) {
-        int[] termStartMonths = {1, 4, 8}; // Jan, Apr, Aug
-        int year = referenceDate.getYear();
+    public Map<String, Object> getUpcomingTermNewsletterPreview() {
+        ConfiguredTermWindow nextWindow = resolveNextConfiguredTermWindow(LocalDate.now());
+        LocalDate termStart = nextWindow.start();
+        LocalDate termEnd = nextWindow.end();
+        String termLabel = "Term " + nextWindow.termNumber();
+        String organizationId = organizationSettingsService.resolveDefaultOrganizationId();
 
-        for (int month : termStartMonths) {
-            LocalDate candidate = LocalDate.of(year, month, 1);
-            if (candidate.isAfter(referenceDate)) {
-                return buildTermWindow(candidate);
+        List<Announcement> upcoming = announcementRepository.findPublishedInDateRange(
+                Arrays.asList("PUBLISHED", "APPROVED"),
+                termStart,
+                termEnd
+        );
+
+        List<String> recipients = userRepository.findByRoleAndIsActiveTrue("Student").stream()
+            .filter(user -> isEmailEnabledForUser(user, organizationId))
+            .map(User::getSchoolEmail)
+                .filter(email -> email != null && !email.isBlank())
+                .distinct()
+                .toList();
+
+        boolean hasContent = !upcoming.isEmpty() && !recipients.isEmpty();
+        String message;
+        if (hasContent) {
+            message = "Preview ready.";
+        } else if (upcoming.isEmpty()) {
+            message = "No upcoming published events found for the next term window.";
+        } else {
+            message = "No student recipients found for termly email.";
+        }
+
+        String subject = "SOANAR Upcoming Events for " + termLabel + " (" + termStart + " to " + termEnd + ")";
+        String htmlContent = hasContent ? buildUpcomingTermNewsletterHtml(upcoming, termStart, termEnd, termLabel) : "";
+
+        return Map.of(
+                "message", message,
+                "subject", subject,
+                "htmlContent", htmlContent,
+                "termLabel", termLabel,
+                "termStart", termStart.toString(),
+                "termEnd", termEnd.toString(),
+                "eventsIncluded", upcoming.size(),
+                "recipients", recipients.size(),
+                "hasContent", hasContent
+        );
+    }
+
+    private List<TermDefinition> getConfiguredTerms() {
+        OrganizationSettings settings = organizationSettingsService.getOrCreateDefaultSettings();
+
+        TermDefinition term1 = new TermDefinition(
+                1,
+                parseMonthDayOrDefault(settings.getTerm1StartMonthDay(), DEFAULT_TERM_1_START),
+                parseMonthDayOrDefault(settings.getTerm1EndMonthDay(), DEFAULT_TERM_1_END)
+        );
+        TermDefinition term2 = new TermDefinition(
+                2,
+                parseMonthDayOrDefault(settings.getTerm2StartMonthDay(), DEFAULT_TERM_2_START),
+                parseMonthDayOrDefault(settings.getTerm2EndMonthDay(), DEFAULT_TERM_2_END)
+        );
+        TermDefinition term3 = new TermDefinition(
+                3,
+                parseMonthDayOrDefault(settings.getTerm3StartMonthDay(), DEFAULT_TERM_3_START),
+                parseMonthDayOrDefault(settings.getTerm3EndMonthDay(), DEFAULT_TERM_3_END)
+        );
+
+        List<TermDefinition> terms = List.of(term1, term2, term3);
+        validateNonOverlappingTerms(terms);
+        return terms;
+    }
+
+    private ConfiguredTermWindow resolveNextConfiguredTermWindow(LocalDate referenceDate) {
+        List<TermDefinition> terms = getConfiguredTerms();
+        List<ConfiguredTermWindow> thisYearWindows = terms.stream()
+                .map(term -> new ConfiguredTermWindow(
+                        term.termNumber(),
+                        term.start().atYear(referenceDate.getYear()),
+                        term.end().atYear(referenceDate.getYear())
+                ))
+                .sorted(Comparator.comparing(ConfiguredTermWindow::start))
+                .toList();
+
+        for (int i = 0; i < thisYearWindows.size(); i++) {
+            ConfiguredTermWindow window = thisYearWindows.get(i);
+            if (!referenceDate.isBefore(window.start()) && !referenceDate.isAfter(window.end())) {
+                if (i + 1 < thisYearWindows.size()) {
+                    return thisYearWindows.get(i + 1);
+                }
+                TermDefinition firstTerm = terms.get(0);
+                return new ConfiguredTermWindow(
+                        firstTerm.termNumber(),
+                        firstTerm.start().atYear(referenceDate.getYear() + 1),
+                        firstTerm.end().atYear(referenceDate.getYear() + 1)
+                );
             }
         }
 
-        return buildTermWindow(LocalDate.of(year + 1, termStartMonths[0], 1));
-    }
-
-    private TermWindow buildTermWindow(LocalDate start) {
-        LocalDate nextStart;
-        int month = start.getMonthValue();
-        if (month == 1) {
-            nextStart = LocalDate.of(start.getYear(), 4, 1);
-        } else if (month == 4) {
-            nextStart = LocalDate.of(start.getYear(), 8, 1);
-        } else {
-            nextStart = LocalDate.of(start.getYear() + 1, 1, 1);
+        for (ConfiguredTermWindow window : thisYearWindows) {
+            if (window.start().isAfter(referenceDate)) {
+                return window;
+            }
         }
 
-        LocalDate end = nextStart.minusDays(1);
-        YearMonth endMonth = YearMonth.of(end.getYear(), end.getMonth());
-        return new TermWindow(start, endMonth.atEndOfMonth());
+        TermDefinition firstTerm = terms.get(0);
+        return new ConfiguredTermWindow(
+                firstTerm.termNumber(),
+                firstTerm.start().atYear(referenceDate.getYear() + 1),
+                firstTerm.end().atYear(referenceDate.getYear() + 1)
+        );
     }
 
-    private record TermWindow(LocalDate start, LocalDate end) {}
+    private void validateNonOverlappingTerms(List<TermDefinition> terms) {
+        List<ConfiguredTermWindow> sorted = terms.stream()
+                .map(term -> new ConfiguredTermWindow(
+                        term.termNumber(),
+                        term.start().atYear(2000),
+                        term.end().atYear(2000)
+                ))
+                .sorted(Comparator.comparing(ConfiguredTermWindow::start))
+                .toList();
 
-    private String buildUpcomingTermNewsletterHtml(List<Announcement> upcoming, LocalDate start, LocalDate end) {
+        for (ConfiguredTermWindow term : sorted) {
+            if (term.end().isBefore(term.start())) {
+                throw new IllegalArgumentException("Each term must have an end date on or after its start date.");
+            }
+        }
+
+        for (int i = 1; i < sorted.size(); i++) {
+            ConfiguredTermWindow previous = sorted.get(i - 1);
+            ConfiguredTermWindow current = sorted.get(i);
+            if (!current.start().isAfter(previous.end())) {
+                throw new IllegalArgumentException("Term coverage dates must not overlap.");
+            }
+        }
+    }
+
+    private MonthDay parseMonthDayRequired(String value, String fieldName) {
+        if (value == null || value.trim().isBlank()) {
+            throw new IllegalArgumentException(fieldName + " is required. Use MM-dd format.");
+        }
+        return parseMonthDay(value);
+    }
+
+    private MonthDay parseMonthDayOrDefault(String value, String fallback) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank()) {
+            return parseMonthDay(fallback);
+        }
+        return parseMonthDay(normalized);
+    }
+
+    private MonthDay parseMonthDay(String value) {
+        try {
+            String normalized = value.trim();
+            if (!normalized.matches("^\\d{2}-\\d{2}$")) {
+                throw new IllegalArgumentException("Invalid Month-Day format. Use MM-dd (example: 08-01).");
+            }
+            return MonthDay.parse("--" + normalized);
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("Invalid Month-Day format. Use MM-dd (example: 08-01).", ex);
+        }
+    }
+
+    private String formatMonthDay(MonthDay monthDay) {
+        return String.format("%02d-%02d", monthDay.getMonthValue(), monthDay.getDayOfMonth());
+    }
+
+    private record TermDefinition(int termNumber, MonthDay start, MonthDay end) {}
+
+    private record ConfiguredTermWindow(int termNumber, LocalDate start, LocalDate end) {}
+
+    private String buildUpcomingTermNewsletterHtml(List<Announcement> upcoming, LocalDate start, LocalDate end, String termLabel) {
         StringBuilder html = new StringBuilder();
         html.append("<html><body style=\"margin:0;padding:0;background:#f3f2ef;font-family:Arial,Helvetica,sans-serif;\">");
         html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f2ef;padding:24px 0;\">");
@@ -316,7 +512,9 @@ public class EmailService {
         html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #d1d5db;border-radius:12px;overflow:hidden;\">");
 
         html.append("<tr><td style=\"padding:18px 24px;background:#0a66c2;color:#ffffff;font-size:15px;font-weight:700;\">SOANAR Updates</td></tr>");
-        html.append("<tr><td style=\"padding:24px 24px 8px;color:#111827;font-size:34px;line-height:1.2;font-weight:700;\">Upcoming Events for Next Term</td></tr>");
+        html.append("<tr><td style=\"padding:24px 24px 8px;color:#111827;font-size:34px;line-height:1.2;font-weight:700;\">Upcoming Events for ")
+            .append(escapeHtml(termLabel))
+            .append("</td></tr>");
         html.append("<tr><td style=\"padding:0 24px 18px;color:#4b5563;font-size:15px;\"><strong>Coverage:</strong> ")
             .append(start)
             .append(" to ")
@@ -327,11 +525,10 @@ public class EmailService {
             html.append("<tr><td style=\"padding:0 24px 12px;\">");
             html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;\">");
             html.append("<tr><td style=\"padding:14px 16px 6px;color:#111827;font-size:18px;font-weight:700;\">")
-                .append(escapeHtml(announcement.getTitle()))
+                .append(escapeHtml(resolveEmailEventTitle(announcement)))
                 .append("</td></tr>");
             html.append("<tr><td style=\"padding:0 16px 8px;color:#374151;font-size:14px;\">Date: ")
-                .append(announcement.getStartDate() != null ? announcement.getStartDate() : "TBD")
-                .append(announcement.getEndDate() != null ? " to " + announcement.getEndDate() : "")
+                .append(formatAnnouncementDateRange(announcement))
                 .append("</td></tr>");
             html.append("<tr><td style=\"padding:0 16px 14px;color:#4b5563;font-size:14px;line-height:1.5;\">")
                 .append(nl2br(escapeHtml(announcement.getDescription())))
@@ -370,5 +567,45 @@ public class EmailService {
 
     private String nl2br(String value) {
         return value == null ? "" : value.replace("\n", "<br/>");
+    }
+
+    private String formatAnnouncementDateRange(Announcement announcement) {
+        LocalDate startDate = announcement.getStartDate();
+        LocalDate endDate = announcement.getEndDate();
+
+        if (startDate == null && endDate == null) {
+            return "TBD";
+        }
+        if (startDate != null && (endDate == null || endDate.equals(startDate))) {
+            return startDate.toString();
+        }
+        if (startDate == null) {
+            return endDate.toString();
+        }
+        return startDate + " to " + endDate;
+    }
+
+    private String resolveEmailEventTitle(Announcement announcement) {
+        String title = announcement.getTitle() != null ? announcement.getTitle().trim() : "";
+        boolean looksAutoGenerated = title.endsWith("....") || title.endsWith("...");
+        if (!title.isBlank() && !"event".equalsIgnoreCase(title) && !looksAutoGenerated) {
+            return title;
+        }
+
+        String description = announcement.getDescription() != null ? announcement.getDescription().trim() : "";
+        if (!description.isBlank()) {
+            String firstLine = description.split("\\R", 2)[0].trim();
+            if (!firstLine.isBlank()) {
+                return firstLine.length() > 80 ? firstLine.substring(0, 80) + "..." : firstLine;
+            }
+        }
+
+        return "Announcement";
+    }
+
+    private boolean isEmailEnabledForUser(User user, String organizationId) {
+        return notificationPreferenceRepository.findByUserAndOrganizationId(user, organizationId)
+                .map(preference -> preference.getNotifyByEmail() == null || preference.getNotifyByEmail())
+                .orElse(true);
     }
 }

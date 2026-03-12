@@ -125,21 +125,34 @@ public class NotificationService {
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
         String notificationPreview = buildAnnouncementNotificationPreview(announcement);
+        String posterName = resolvePosterName(announcement);
+        String subject = "New Announcement from " + posterName;
 
         for (String email : recipientEmails) {
             createNotification(
                 announcement,
                 email,
                 "announcement",
-                "New Announcement: " + announcement.getTitle(),
+                subject,
                 notificationPreview
             );
         }
 
         if (!recipientEmails.isEmpty()) {
-            String subject = "New Announcement: " + announcement.getTitle();
-            String html = buildEmailHtmlBody(announcement);
-            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
+            // Filter recipients by email notification preference
+            List<String> emailEnabledRecipients = recipientEmails.stream()
+                .filter(email -> {
+                    var user = userRepository.findBySchoolEmail(email);
+                    if (user.isEmpty()) return true; // Default to sending if user not found
+                    NotificationPreference prefs = getOrCreatePreferences(user.get(), "default-org");
+                    return prefs.getNotifyByEmail() != null && prefs.getNotifyByEmail();
+                })
+                .collect(Collectors.toList());
+            
+            if (!emailEnabledRecipients.isEmpty()) {
+                String html = buildEmailHtmlBody(announcement);
+                emailService.sendTargetedEmail(emailEnabledRecipients, subject, html);
+            }
         }
     }
     
@@ -150,21 +163,34 @@ public class NotificationService {
     public void notifyDistributionGroupMembers(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
         String notificationPreview = buildAnnouncementNotificationPreview(announcement);
+        String posterName = resolvePosterName(announcement);
+        String subject = "New Announcement from " + posterName;
 
         for (String email : recipientEmails) {
             createNotification(
                 announcement,
                 email,
                 "announcement",
-                "New Announcement: " + announcement.getTitle(),
+                subject,
                 notificationPreview
             );
         }
 
         if (!recipientEmails.isEmpty()) {
-            String subject = "New Announcement: " + announcement.getTitle();
-            String html = buildEmailHtmlBody(announcement);
-            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
+            // Filter recipients by email notification preference
+            List<String> emailEnabledRecipients = recipientEmails.stream()
+                .filter(email -> {
+                    var user = userRepository.findBySchoolEmail(email);
+                    if (user.isEmpty()) return true; // Default to sending if user not found
+                    NotificationPreference prefs = getOrCreatePreferences(user.get(), "default-org");
+                    return prefs.getNotifyByEmail() != null && prefs.getNotifyByEmail();
+                })
+                .collect(Collectors.toList());
+            
+            if (!emailEnabledRecipients.isEmpty()) {
+                String html = buildEmailHtmlBody(announcement);
+                emailService.sendTargetedEmail(emailEnabledRecipients, subject, html);
+            }
         } else {
             System.out.println("No recipients found for announcement: " + announcement.getId());
         }
@@ -227,20 +253,28 @@ public class NotificationService {
      */
     private String buildEmailHtmlBody(Announcement announcement) {
         StringBuilder html = new StringBuilder();
-        String title = escapeHtml(announcement.getTitle());
         String description = nl2br(escapeHtml(announcement.getDescription()));
         String posterName = escapeHtml(resolvePosterName(announcement));
+        String posterRole = escapeHtml(resolvePosterRole(announcement));
+        String posterInitial = escapeHtml(posterName.isBlank() ? "S" : posterName.substring(0, 1).toUpperCase());
 
         html.append("<html><body style=\"margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;\">");
         html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f4f6;padding:24px 0;\">");
         html.append("<tr><td align=\"center\">");
         html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;\">");
-        html.append("<tr><td style=\"padding:24px 28px 8px;color:#111827;font-size:18px;font-weight:700;\">New Announcement</td></tr>");
-        html.append("<tr><td style=\"padding:0 28px 16px;color:#111827;font-size:28px;line-height:1.35;font-weight:700;\">")
-            .append(title)
-            .append("</td></tr>");
-        html.append("<tr><td style=\"padding:0 28px 12px;color:#374151;font-size:15px;line-height:1.6;\">Hello,</td></tr>");
-        html.append("<tr><td style=\"padding:0 28px 16px;color:#374151;font-size:15px;line-height:1.6;\">A new announcement has been posted:</td></tr>");
+        html.append("<tr><td style=\"padding:20px 28px 0;color:#111827;font-size:20px;font-weight:700;\">New Announcement</td></tr>");
+        html.append("<tr><td style=\"padding:14px 28px 12px;\">");
+        html.append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\"><tr>");
+        html.append("<td style=\"width:44px;height:44px;border-radius:50%;background:#22356D;color:#ffffff;font-size:20px;font-weight:700;text-align:center;line-height:44px;\">")
+            .append(posterInitial)
+            .append("</td>");
+        html.append("<td style=\"padding-left:12px;vertical-align:middle;\"><div style=\"color:#1f2937;font-size:22px;font-weight:700;line-height:1.2;\">")
+            .append(posterName)
+            .append("</div><div style=\"color:#64748b;font-size:14px;font-weight:600;line-height:1.4;\">")
+            .append(posterRole)
+            .append("</div></td>");
+        html.append("</tr></table>");
+        html.append("</td></tr>");
 
         List<String> imageUrls = announcement.getImageUrls() != null ? announcement.getImageUrls() : Collections.emptyList();
         if (!imageUrls.isEmpty()) {
@@ -261,14 +295,9 @@ public class NotificationService {
                 .append("</td></tr>");
         }
 
-        html.append("<tr><td style=\"padding:8px 28px 0;color:#111827;font-size:14px;font-weight:700;\">Description</td></tr>");
-        html.append("<tr><td style=\"padding:8px 28px 0;color:#374151;font-size:15px;line-height:1.65;\">")
+        html.append("<tr><td style=\"padding:10px 28px 0;color:#374151;font-size:16px;line-height:1.65;\">")
             .append(description)
             .append("</td></tr>");
-        html.append("<tr><td style=\"padding:16px 28px 0;color:#4b5563;font-size:15px;\">Posted by: ")
-            .append(posterName)
-            .append("</td></tr>");
-        html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SOANAR to view more details.</td></tr>");
         html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SOANAR</td></tr>");
         html.append("</table>");
         html.append("</td></tr></table>");
@@ -393,7 +422,17 @@ public class NotificationService {
             html.append("</table></td></tr></table>");
             html.append("</body></html>");
 
-            emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+            // Check user preference before sending email
+            var user = userRepository.findBySchoolEmail(recipientEmail);
+            if (user.isPresent()) {
+                NotificationPreference prefs = getOrCreatePreferences(user.get(), "default-org");
+                if (prefs.getNotifyByEmail() != null && prefs.getNotifyByEmail()) {
+                    emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+                }
+            } else {
+                // User not found, send by default
+                emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+            }
         } catch (Exception e) {
             System.err.println("Failed to send event-created email to " + recipientEmail + ": " + e.getMessage());
         }
@@ -585,6 +624,16 @@ public class NotificationService {
             return announcement.getPostedBy().getName();
         }
         return "SOANAR Team";
+    }
+
+    private String resolvePosterRole(Announcement announcement) {
+        if (announcement.getPosterRoleSnapshot() != null && !announcement.getPosterRoleSnapshot().isBlank()) {
+            return announcement.getPosterRoleSnapshot();
+        }
+        if (announcement.getPostedBy() != null && announcement.getPostedBy().getRole() != null && !announcement.getPostedBy().getRole().isBlank()) {
+            return announcement.getPostedBy().getRole();
+        }
+        return "Organization";
     }
 
     private String escapeHtml(String value) {

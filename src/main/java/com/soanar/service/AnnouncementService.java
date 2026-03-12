@@ -208,6 +208,21 @@ public class AnnouncementService {
     }
     
     @Transactional
+    public void refreshPosterPhotoForUser(User user) {
+        if (user == null || user.getPhotoUrl() == null || user.getPhotoUrl().isBlank()) return;
+        List<Announcement> userPosts = announcementRepository.findAll().stream()
+                .filter(a -> a.getPostedBy() != null && user.getId() != null && user.getId().equals(a.getPostedBy().getId()))
+                .filter(a -> !user.getPhotoUrl().equals(a.getPosterPhotoSnapshot()))
+                .collect(Collectors.toList());
+        for (Announcement a : userPosts) {
+            a.setPosterPhotoSnapshot(user.getPhotoUrl());
+        }
+        if (!userPosts.isEmpty()) {
+            announcementRepository.saveAll(userPosts);
+        }
+    }
+
+    @Transactional
     public void delete(Long id) {
         Announcement a = getActiveAnnouncementOrThrow(id);
         a.setIsDeleted(true);
