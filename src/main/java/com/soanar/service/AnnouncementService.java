@@ -19,14 +19,22 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class AnnouncementService {
+
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s]+$");
+    private static final Pattern URL_IN_TEXT_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s]+");
+    private static final int URL_MAX_READABLE_LENGTH = 40;
+    private static final int URL_SUFFIX_LENGTH = 4;
 
     private final AnnouncementRepository announcementRepository;
     private final NotificationService notificationService;
@@ -57,7 +65,7 @@ public class AnnouncementService {
     }
 
     public List<Announcement> getPublished() {
-        return announcementRepository.findByStatusIn(java.util.Arrays.asList("PUBLISHED", "APPROVED"));
+        return announcementRepository.findByStatusIn(Arrays.asList("PUBLISHED", "APPROVED"));
     }
 
     public List<Announcement> getPublishedForUser(User user) {
@@ -74,6 +82,8 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement create(Announcement a, User poster) {
+        a.setDescription(shortenLongUrlsInDescription(a.getDescription()));
+
         // Set the poster - Spring Data JPA will manage the relationship
         a.setPostedBy(poster);
         String posterRole = poster.getRole();
@@ -132,7 +142,9 @@ public class AnnouncementService {
 
     private void dispatchPostCreateNotifications(Long announcementId, String posterRole) {
         try {
-            Announcement persisted = announcementRepository.findById(announcementId).orElse(null);
+            Announcement persisted = announcementRepository
+                    .findActiveByIdWithNotificationRelations(announcementId)
+                    .orElse(null);
             if (persisted == null) {
                 System.err.println("Warning: Announcement not found for notification dispatch: " + announcementId);
                 return;
@@ -161,7 +173,7 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement approve(Long id) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("PUBLISHED");
         a.setPublishedAt(Instant.now());
         return announcementRepository.save(a);
@@ -169,7 +181,7 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement approve(Long id, User approver, String notes) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("PUBLISHED");
         a.setPublishedAt(Instant.now());
         a.setApprovedBy(approver);
@@ -180,14 +192,14 @@ public class AnnouncementService {
 
     @Transactional
     public Announcement reject(Long id) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("REJECTED");
         return announcementRepository.save(a);
     }
 
     @Transactional
     public Announcement reject(Long id, User rejector, String rejectionReason) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         a.setStatus("REJECTED");
         a.setApprovedBy(rejector);
         a.setApprovedAt(Instant.now());
@@ -196,13 +208,31 @@ public class AnnouncementService {
     }
     
     @Transactional
+    public void refreshPosterPhotoForUser(User user) {
+        if (user == null || user.getPhotoUrl() == null || user.getPhotoUrl().isBlank()) return;
+        List<Announcement> userPosts = announcementRepository.findAll().stream()
+                .filter(a -> a.getPostedBy() != null && user.getId() != null && user.getId().equals(a.getPostedBy().getId()))
+                .filter(a -> !user.getPhotoUrl().equals(a.getPosterPhotoSnapshot()))
+                .collect(Collectors.toList());
+        for (Announcement a : userPosts) {
+            a.setPosterPhotoSnapshot(user.getPhotoUrl());
+        }
+        if (!userPosts.isEmpty()) {
+            announcementRepository.saveAll(userPosts);
+        }
+    }
+
+    @Transactional
     public void delete(Long id) {
-        announcementRepository.deleteById(id);
+        Announcement a = getActiveAnnouncementOrThrow(id);
+        a.setIsDeleted(true);
+        a.setDeletedAt(Instant.now());
+        announcementRepository.save(a);
     }
     
     @Transactional
     public void notifyAfterApproval(Long id, boolean approved) {
-        Announcement a = announcementRepository.findById(id).orElseThrow();
+        Announcement a = getActiveAnnouncementOrThrow(id);
         
         // DEBUG: Check imageUrls after fetch from DB
         System.out.println("DEBUG notifyAfterApproval: imageUrl = " + a.getImageUrl());
@@ -349,5 +379,55 @@ public class AnnouncementService {
         int schoolYearStartYear = now.getMonthValue() >= 6 ? now.getYear() : now.getYear() - 1;
         LocalDate startDate = LocalDate.of(schoolYearStartYear, 6, 1);
         return startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
+    }
+
+    String shortenLongUrlsInDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return description;
+        }
+
+        Matcher matcher = URL_IN_TEXT_PATTERN.matcher(description);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String matched = matcher.group();
+            String trailing = extractTrailingPunctuation(matched);
+            String urlOnly = trailing.isEmpty() ? matched : matched.substring(0, matched.length() - trailing.length());
+            String shortened = shortenUrlIfNeeded(urlOnly) + trailing;
+            matcher.appendReplacement(result, Matcher.quoteReplacement(shortened));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    private String shortenUrlIfNeeded(String url) {
+        if (url == null || url.length() <= URL_MAX_READABLE_LENGTH) {
+            return url;
+        }
+
+        int prefixLength = Math.max(20, URL_MAX_READABLE_LENGTH - URL_SUFFIX_LENGTH - 3);
+        prefixLength = Math.min(prefixLength, url.length() - URL_SUFFIX_LENGTH - 3);
+
+        if (prefixLength <= 0) {
+            return url;
+        }
+
+        return url.substring(0, prefixLength) + "..." + url.substring(url.length() - URL_SUFFIX_LENGTH);
+    }
+
+    private String extractTrailingPunctuation(String candidate) {
+        if (candidate == null || candidate.isEmpty() || URL_PATTERN.matcher(candidate).matches()) {
+            return "";
+        }
+
+        int i = candidate.length() - 1;
+        while (i >= 0 && ".,;:!?)]}".indexOf(candidate.charAt(i)) >= 0) {
+            i--;
+        }
+        return i == candidate.length() - 1 ? "" : candidate.substring(i + 1);
+    }
+
+    private Announcement getActiveAnnouncementOrThrow(Long id) {
+        return announcementRepository.findActiveById(id)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
     }
 }

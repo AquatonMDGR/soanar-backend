@@ -38,6 +38,24 @@ public class OrganizationSettings {
     @Column(name = "instagram_enabled")
     private Boolean instagramEnabled = false;
 
+    @Column(name = "term1_start_md")
+    private String term1StartMonthDay;
+
+    @Column(name = "term1_end_md")
+    private String term1EndMonthDay;
+
+    @Column(name = "term2_start_md")
+    private String term2StartMonthDay;
+
+    @Column(name = "term2_end_md")
+    private String term2EndMonthDay;
+
+    @Column(name = "term3_start_md")
+    private String term3StartMonthDay;
+
+    @Column(name = "term3_end_md")
+    private String term3EndMonthDay;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -76,6 +94,24 @@ public class OrganizationSettings {
 
     public Boolean getInstagramEnabled() { return instagramEnabled; }
     public void setInstagramEnabled(Boolean instagramEnabled) { this.instagramEnabled = instagramEnabled; }
+
+    public String getTerm1StartMonthDay() { return term1StartMonthDay; }
+    public void setTerm1StartMonthDay(String term1StartMonthDay) { this.term1StartMonthDay = term1StartMonthDay; }
+
+    public String getTerm1EndMonthDay() { return term1EndMonthDay; }
+    public void setTerm1EndMonthDay(String term1EndMonthDay) { this.term1EndMonthDay = term1EndMonthDay; }
+
+    public String getTerm2StartMonthDay() { return term2StartMonthDay; }
+    public void setTerm2StartMonthDay(String term2StartMonthDay) { this.term2StartMonthDay = term2StartMonthDay; }
+
+    public String getTerm2EndMonthDay() { return term2EndMonthDay; }
+    public void setTerm2EndMonthDay(String term2EndMonthDay) { this.term2EndMonthDay = term2EndMonthDay; }
+
+    public String getTerm3StartMonthDay() { return term3StartMonthDay; }
+    public void setTerm3StartMonthDay(String term3StartMonthDay) { this.term3StartMonthDay = term3StartMonthDay; }
+
+    public String getTerm3EndMonthDay() { return term3EndMonthDay; }
+    public void setTerm3EndMonthDay(String term3EndMonthDay) { this.term3EndMonthDay = term3EndMonthDay; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

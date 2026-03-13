@@ -3,12 +3,9 @@ package com.soanar.service;
 import com.soanar.model.Announcement;
 import com.soanar.model.Notification;
 import com.soanar.model.User;
-import com.soanar.model.DistributionGroup;
-import com.soanar.model.DistributionGroupMember;
 import com.soanar.model.NotificationPreference;
 import com.soanar.repository.NotificationRepository;
 import com.soanar.repository.UserRepository;
-import com.soanar.repository.DistributionGroupMemberRepository;
 import com.soanar.repository.NotificationPreferenceRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,22 +25,27 @@ import java.util.stream.Collectors;
 @Service
 public class NotificationService {
 
+    // Some deployed databases still use legacy VARCHAR sizes in notifications.
+    private static final int LEGACY_RECIPIENT_MAX = 255;
+    private static final int LEGACY_TITLE_MAX = 255;
+    private static final int LEGACY_MESSAGE_MAX = 255;
+    private static final int LEGACY_TYPE_MAX = 50;
+    private static final int LEGACY_ENTITY_TYPE_MAX = 50;
+    private static final int NOTIFICATION_DESCRIPTION_SNIPPET_MAX = 180;
+
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
-    private final DistributionGroupMemberRepository distributionGroupMemberRepository;
     private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final EmailService emailService;
     private final RecipientResolverService recipientResolverService;
 
     public NotificationService(NotificationRepository notificationRepository, 
                                UserRepository userRepository,
-                               DistributionGroupMemberRepository distributionGroupMemberRepository,
                                NotificationPreferenceRepository notificationPreferenceRepository,
                                EmailService emailService,
                                RecipientResolverService recipientResolverService) {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
-        this.distributionGroupMemberRepository = distributionGroupMemberRepository;
         this.notificationPreferenceRepository = notificationPreferenceRepository;
         this.emailService = emailService;
         this.recipientResolverService = recipientResolverService;
@@ -63,6 +65,7 @@ public class NotificationService {
             notification.setEntityType("ANNOUNCEMENT");
             notification.setEntityId(announcement.getId());
         }
+        applyLegacyColumnSafety(notification);
         userRepository.findBySchoolEmail(recipientEmail).ifPresent(notification::setUser);
         notificationRepository.save(notification);
     }
@@ -78,7 +81,7 @@ public class NotificationService {
         notification.setType("announcement");
         if (announcement != null) {
             notification.setTitle("New Announcement: " + announcement.getTitle());
-            notification.setBody(announcement.getDescription());
+            notification.setBody(buildAnnouncementNotificationPreview(announcement));
         }
         if (announcement != null && announcement.getId() != null) {
             notification.setActionUrl("/announcement/" + announcement.getId());
@@ -86,6 +89,7 @@ public class NotificationService {
             notification.setEntityId(announcement.getId());
         }
         notification.setCreatedAt(Instant.now());
+        applyLegacyColumnSafety(notification);
         userRepository.findBySchoolEmail(recipientEmail).ifPresent(notification::setUser);
         notificationRepository.save(notification);
     }
@@ -120,21 +124,35 @@ public class NotificationService {
      */
     public void notifyStudentsOfPublishedAnnouncement(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
+        String notificationPreview = buildAnnouncementNotificationPreview(announcement);
+        String posterName = resolvePosterName(announcement);
+        String subject = "New Announcement from " + posterName;
 
         for (String email : recipientEmails) {
             createNotification(
                 announcement,
                 email,
                 "announcement",
-                "New Announcement: " + announcement.getTitle(),
-                announcement.getDescription()
+                subject,
+                notificationPreview
             );
         }
 
         if (!recipientEmails.isEmpty()) {
-            String subject = "New Announcement: " + announcement.getTitle();
-            String html = buildEmailHtmlBody(announcement);
-            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
+            // Filter recipients by email notification preference
+            List<String> emailEnabledRecipients = recipientEmails.stream()
+                .filter(email -> {
+                    var user = userRepository.findBySchoolEmail(email);
+                    if (user.isEmpty()) return true; // Default to sending if user not found
+                    NotificationPreference prefs = getOrCreatePreferences(user.get(), "default-org");
+                    return prefs.getNotifyByEmail() != null && prefs.getNotifyByEmail();
+                })
+                .collect(Collectors.toList());
+            
+            if (!emailEnabledRecipients.isEmpty()) {
+                String html = buildEmailHtmlBody(announcement);
+                emailService.sendTargetedEmail(emailEnabledRecipients, subject, html);
+            }
         }
     }
     
@@ -144,21 +162,35 @@ public class NotificationService {
      */
     public void notifyDistributionGroupMembers(Announcement announcement) {
         Set<String> recipientEmails = recipientResolverService.resolveWithFallback(announcement);
+        String notificationPreview = buildAnnouncementNotificationPreview(announcement);
+        String posterName = resolvePosterName(announcement);
+        String subject = "New Announcement from " + posterName;
 
         for (String email : recipientEmails) {
             createNotification(
                 announcement,
                 email,
                 "announcement",
-                "New Announcement: " + announcement.getTitle(),
-                announcement.getDescription()
+                subject,
+                notificationPreview
             );
         }
 
         if (!recipientEmails.isEmpty()) {
-            String subject = "New Announcement: " + announcement.getTitle();
-            String html = buildEmailHtmlBody(announcement);
-            emailService.sendTargetedEmail(new ArrayList<>(recipientEmails), subject, html);
+            // Filter recipients by email notification preference
+            List<String> emailEnabledRecipients = recipientEmails.stream()
+                .filter(email -> {
+                    var user = userRepository.findBySchoolEmail(email);
+                    if (user.isEmpty()) return true; // Default to sending if user not found
+                    NotificationPreference prefs = getOrCreatePreferences(user.get(), "default-org");
+                    return prefs.getNotifyByEmail() != null && prefs.getNotifyByEmail();
+                })
+                .collect(Collectors.toList());
+            
+            if (!emailEnabledRecipients.isEmpty()) {
+                String html = buildEmailHtmlBody(announcement);
+                emailService.sendTargetedEmail(emailEnabledRecipients, subject, html);
+            }
         } else {
             System.out.println("No recipients found for announcement: " + announcement.getId());
         }
@@ -170,6 +202,7 @@ public class NotificationService {
      */
     public void notifyAllStudentsEmergency(Announcement announcement) {
         List<User> activeStudents = userRepository.findByRoleAndIsActiveTrue("Student");
+        String notificationPreview = buildAnnouncementNotificationPreview(announcement);
         Set<String> recipientEmails = activeStudents.stream()
                 .map(User::getSchoolEmail)
                 .filter(email -> email != null && !email.isBlank())
@@ -183,7 +216,7 @@ public class NotificationService {
                 email,
                 "announcement",
                 "Emergency Announcement: " + announcement.getTitle(),
-                announcement.getDescription()
+                notificationPreview
             );
         }
 
@@ -220,20 +253,28 @@ public class NotificationService {
      */
     private String buildEmailHtmlBody(Announcement announcement) {
         StringBuilder html = new StringBuilder();
-        String title = escapeHtml(announcement.getTitle());
         String description = nl2br(escapeHtml(announcement.getDescription()));
         String posterName = escapeHtml(resolvePosterName(announcement));
+        String posterRole = escapeHtml(resolvePosterRole(announcement));
+        String posterInitial = escapeHtml(posterName.isBlank() ? "S" : posterName.substring(0, 1).toUpperCase());
 
         html.append("<html><body style=\"margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;\">");
         html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f4f6;padding:24px 0;\">");
         html.append("<tr><td align=\"center\">");
         html.append("<table role=\"presentation\" width=\"640\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;\">");
-        html.append("<tr><td style=\"padding:24px 28px 8px;color:#111827;font-size:18px;font-weight:700;\">New Announcement</td></tr>");
-        html.append("<tr><td style=\"padding:0 28px 16px;color:#111827;font-size:28px;line-height:1.35;font-weight:700;\">")
-            .append(title)
-            .append("</td></tr>");
-        html.append("<tr><td style=\"padding:0 28px 12px;color:#374151;font-size:15px;line-height:1.6;\">Hello,</td></tr>");
-        html.append("<tr><td style=\"padding:0 28px 16px;color:#374151;font-size:15px;line-height:1.6;\">A new announcement has been posted:</td></tr>");
+        html.append("<tr><td style=\"padding:20px 28px 0;color:#111827;font-size:20px;font-weight:700;\">New Announcement</td></tr>");
+        html.append("<tr><td style=\"padding:14px 28px 12px;\">");
+        html.append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\"><tr>");
+        html.append("<td style=\"width:44px;height:44px;border-radius:50%;background:#22356D;color:#ffffff;font-size:20px;font-weight:700;text-align:center;line-height:44px;\">")
+            .append(posterInitial)
+            .append("</td>");
+        html.append("<td style=\"padding-left:12px;vertical-align:middle;\"><div style=\"color:#1f2937;font-size:22px;font-weight:700;line-height:1.2;\">")
+            .append(posterName)
+            .append("</div><div style=\"color:#64748b;font-size:14px;font-weight:600;line-height:1.4;\">")
+            .append(posterRole)
+            .append("</div></td>");
+        html.append("</tr></table>");
+        html.append("</td></tr>");
 
         List<String> imageUrls = announcement.getImageUrls() != null ? announcement.getImageUrls() : Collections.emptyList();
         if (!imageUrls.isEmpty()) {
@@ -254,14 +295,9 @@ public class NotificationService {
                 .append("</td></tr>");
         }
 
-        html.append("<tr><td style=\"padding:8px 28px 0;color:#111827;font-size:14px;font-weight:700;\">Description</td></tr>");
-        html.append("<tr><td style=\"padding:8px 28px 0;color:#374151;font-size:15px;line-height:1.65;\">")
+        html.append("<tr><td style=\"padding:10px 28px 0;color:#374151;font-size:16px;line-height:1.65;\">")
             .append(description)
             .append("</td></tr>");
-        html.append("<tr><td style=\"padding:16px 28px 0;color:#4b5563;font-size:15px;\">Posted by: ")
-            .append(posterName)
-            .append("</td></tr>");
-        html.append("<tr><td style=\"padding:20px 28px 0;color:#374151;font-size:15px;line-height:1.6;\">Log in to SOANAR to view more details.</td></tr>");
         html.append("<tr><td style=\"padding:24px 28px 28px;color:#374151;font-size:15px;line-height:1.6;\">Best regards,<br/>SOANAR</td></tr>");
         html.append("</table>");
         html.append("</td></tr></table>");
@@ -386,7 +422,17 @@ public class NotificationService {
             html.append("</table></td></tr></table>");
             html.append("</body></html>");
 
-            emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+            // Check user preference before sending email
+            var user = userRepository.findBySchoolEmail(recipientEmail);
+            if (user.isPresent()) {
+                NotificationPreference prefs = getOrCreatePreferences(user.get(), "default-org");
+                if (prefs.getNotifyByEmail() != null && prefs.getNotifyByEmail()) {
+                    emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+                }
+            } else {
+                // User not found, send by default
+                emailService.sendTargetedEmail(Collections.singletonList(recipientEmail), subject, html.toString());
+            }
         } catch (Exception e) {
             System.err.println("Failed to send event-created email to " + recipientEmail + ": " + e.getMessage());
         }
@@ -406,6 +452,7 @@ public class NotificationService {
         }
         
         Notification notification = new Notification(user, user.getSchoolEmail(), type, title, body, actionUrl, entityType, entityId);
+        applyLegacyColumnSafety(notification);
         notification = notificationRepository.save(notification);
         
         // Send email if enabled
@@ -518,6 +565,49 @@ public class NotificationService {
             .map(user -> Boolean.FALSE.equals(user.getIsActive()))
             .orElse(false);
     }
+
+    private void applyLegacyColumnSafety(Notification notification) {
+        notification.setRecipientEmail(limit(notification.getRecipientEmail(), LEGACY_RECIPIENT_MAX));
+        notification.setType(limit(notification.getType(), LEGACY_TYPE_MAX));
+        notification.setTitle(limit(notification.getTitle(), LEGACY_TITLE_MAX));
+        notification.setEntityType(limit(notification.getEntityType(), LEGACY_ENTITY_TYPE_MAX));
+
+        String fullBody = notification.getBody();
+        if (fullBody != null) {
+            String legacyMessage = limit(fullBody, LEGACY_MESSAGE_MAX);
+            notification.setMessage(legacyMessage);
+            notification.setBody(fullBody);
+        }
+    }
+
+    private String limit(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
+    private String buildAnnouncementNotificationPreview(Announcement announcement) {
+        if (announcement == null) {
+            return "A new announcement has been posted.";
+        }
+
+        String description = announcement.getDescription();
+        if (description == null) {
+            return "A new announcement has been posted.";
+        }
+
+        String normalized = description.trim().replaceAll("\\s+", " ");
+        if (normalized.isEmpty()) {
+            return "A new announcement has been posted.";
+        }
+
+        if (normalized.length() <= NOTIFICATION_DESCRIPTION_SNIPPET_MAX) {
+            return normalized;
+        }
+
+        return normalized.substring(0, NOTIFICATION_DESCRIPTION_SNIPPET_MAX - 1) + "...";
+    }
     
     /**
      * Get notification preferences
@@ -534,6 +624,16 @@ public class NotificationService {
             return announcement.getPostedBy().getName();
         }
         return "SOANAR Team";
+    }
+
+    private String resolvePosterRole(Announcement announcement) {
+        if (announcement.getPosterRoleSnapshot() != null && !announcement.getPosterRoleSnapshot().isBlank()) {
+            return announcement.getPosterRoleSnapshot();
+        }
+        if (announcement.getPostedBy() != null && announcement.getPostedBy().getRole() != null && !announcement.getPostedBy().getRole().isBlank()) {
+            return announcement.getPostedBy().getRole();
+        }
+        return "Organization";
     }
 
     private String escapeHtml(String value) {

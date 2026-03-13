@@ -74,8 +74,64 @@ public class EmailController {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
-        Map<String, Object> result = emailService.forceSendUpcomingTermNewsletter();
-        return ResponseEntity.ok(result);
+        try {
+            Map<String, Object> result = emailService.forceSendUpcomingTermNewsletter();
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/term-coverage")
+    public ResponseEntity<?> getTermCoverageSettings(
+            @RequestHeader("Authorization") String authHeader) {
+
+        String token = authHeader.replace("Bearer ", "");
+        String role = jwtUtil.extractRole(token);
+
+        if (!"Super Admin".equals(role)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        return ResponseEntity.ok(emailService.getTermCoverageSettings());
+    }
+
+    @PutMapping("/term-coverage")
+    public ResponseEntity<?> updateTermCoverageSettings(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody Map<String, String> payload) {
+
+        String token = authHeader.replace("Bearer ", "");
+        String role = jwtUtil.extractRole(token);
+
+        if (!"Super Admin".equals(role)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        try {
+            return ResponseEntity.ok(emailService.updateTermCoverageSettings(payload));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/preview-termly-upcoming")
+    public ResponseEntity<?> previewUpcomingTermNewsletter(
+            @RequestHeader("Authorization") String authHeader) {
+
+        String token = authHeader.replace("Bearer ", "");
+        String role = jwtUtil.extractRole(token);
+
+        if (!"Super Admin".equals(role)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        try {
+            Map<String, Object> result = emailService.getUpcomingTermNewsletterPreview();
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
     }
 
     private List<String> extractRecipients(Map<String, Object> body) {
