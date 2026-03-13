@@ -95,6 +95,39 @@ public class EmailService {
     }
 
     public void sendTargetedEmail(List<String> recipients, String subject, String body) {
+        if (recipients == null || recipients.isEmpty()) return;
+
+        String provider = mailProvider != null ? mailProvider.trim().toLowerCase() : "smtp";
+
+        // SendGrid supports batching all recipients in one API call — avoids per-call rate limiting
+        if ("sendgrid".equals(provider)) {
+            try {
+                sendViaSendGridBatch(recipients, subject, body);
+                for (String recipient : recipients) {
+                    Email email = new Email();
+                    email.setRecipientEmail(recipient);
+                    email.setSubject(subject);
+                    email.setBody(body);
+                    email.setStatus("SENT");
+                    email.setSentAt(Instant.now());
+                    emailRepository.save(email);
+                }
+            } catch (Exception e) {
+                logger.error("SendGrid batch email failed for {} recipients: {}", recipients.size(), describeEmailFailure(e), e);
+                for (String recipient : recipients) {
+                    Email email = new Email();
+                    email.setRecipientEmail(recipient);
+                    email.setSubject(subject);
+                    email.setBody(body);
+                    email.setStatus("FAILED");
+                    email.setSentAt(Instant.now());
+                    emailRepository.save(email);
+                }
+            }
+            return;
+        }
+
+        // Per-recipient path for SMTP / Resend / auto
         for (String recipient : recipients) {
             try {
                 deliverEmail(recipient, subject, body);
@@ -305,6 +338,49 @@ public class EmailService {
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("Resend API failed (" + response.statusCode() + "): " + response.body());
+        }
+    }
+
+    private void sendViaSendGridBatch(List<String> recipients, String subject, String body) throws IOException, InterruptedException {
+        if (sendgridApiKey == null || sendgridApiKey.isBlank()) {
+            throw new IllegalStateException("SENDGRID_API_KEY is not configured");
+        }
+        if (mailFrom == null || mailFrom.isBlank()) {
+            throw new IllegalStateException("MAIL_FROM (or MAIL_USERNAME) is required as the SendGrid sender address");
+        }
+
+        String fromName = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName : mailFrom;
+        String html = body != null ? body : "";
+
+        StringBuilder personalizations = new StringBuilder("[");
+        for (int i = 0; i < recipients.size(); i++) {
+            if (i > 0) personalizations.append(",");
+            personalizations.append("{\"to\":[{\"email\":\"").append(jsonEscape(recipients.get(i))).append("\"}]}");
+        }
+        personalizations.append("]");
+
+        String payload = "{"
+                + "\"personalizations\":" + personalizations + ","
+                + "\"from\":{\"email\":\"" + jsonEscape(mailFrom) + "\",\"name\":\"" + jsonEscape(fromName) + "\"},"
+                + "\"subject\":\"" + jsonEscape(subject != null ? subject : "") + "\","
+                + "\"content\":[{\"type\":\"text/html\",\"value\":\"" + jsonEscape(html) + "\"}]"
+                + "}";
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .build();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.sendgrid.com/v3/mail/send"))
+                .header("Authorization", "Bearer " + sendgridApiKey)
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("SendGrid API failed (" + response.statusCode() + "): " + response.body());
         }
     }
 
