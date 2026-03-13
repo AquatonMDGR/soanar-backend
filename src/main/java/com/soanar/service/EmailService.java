@@ -9,6 +9,9 @@ import com.soanar.repository.UserRepository;
 import com.soanar.repository.AnnouncementRepository;
 import com.soanar.repository.NotificationPreferenceRepository;
 import jakarta.mail.internet.MimeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,8 @@ import java.io.IOException;
 
 @Service
 public class EmailService {
+
+    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     private final JavaMailSender mailSender;
     private final EmailRepository emailRepository;
@@ -99,7 +104,7 @@ public class EmailService {
                 email.setSentAt(Instant.now());
                 emailRepository.save(email);
             } catch (Exception e) {
-                System.err.println("Email send failed for " + recipient + ": " + e.getMessage());
+                logger.error("Email send failed for {}: {}", recipient, describeEmailFailure(e), e);
                 Email email = new Email();
                 email.setRecipientEmail(recipient);
                 email.setSubject(subject);
@@ -128,7 +133,7 @@ public class EmailService {
                 if (!resendConfigured) {
                     throw smtpEx;
                 }
-                System.err.println("SMTP delivery failed, retrying with Resend for " + recipient + ": " + smtpEx.getMessage());
+                logger.warn("SMTP delivery failed for {}. Retrying with Resend. Reason: {}", recipient, describeEmailFailure(smtpEx));
                 sendViaResend(recipient, subject, body);
                 return "RESEND";
             }
@@ -168,7 +173,7 @@ public class EmailService {
                         i++;
                     }
                 } catch (Exception ex) {
-                    System.err.println("Warning: failed to download inline image " + url + ": " + ex.getMessage());
+                    logger.warn("Failed to download inline image {}: {}", url, ex.getMessage());
                 }
             }
         }
@@ -190,11 +195,71 @@ public class EmailService {
             try {
                 helper.addInline(cid, resource, ct);
             } catch (Exception ex) {
-                System.err.println("Warning: failed to attach inline image cid=" + cid + ": " + ex.getMessage());
+                logger.warn("Failed to attach inline image {}: {}", cid, ex.getMessage());
             }
         }
 
         mailSender.send(mimeMessage);
+    }
+
+    private String describeEmailFailure(Exception exception) {
+        if (isConnectTimeout(exception)) {
+            return "SMTP connection timed out while connecting to the mail host. This usually means outbound SMTP is blocked or the host is unreachable.";
+        }
+
+        if (findCause(exception, MailAuthenticationException.class) != null) {
+            return "SMTP authentication failed. Check MAIL_USERNAME, MAIL_PASSWORD, and Gmail app-password settings.";
+        }
+
+        Throwable socketTimeout = findCauseByClassName(exception, "SocketTimeoutException");
+        if (socketTimeout != null) {
+            return "SMTP socket timed out after connecting. Check firewall/network conditions and SMTP timeout values.";
+        }
+
+        Throwable unknownHost = findCauseByClassName(exception, "UnknownHostException");
+        if (unknownHost != null) {
+            return "Mail host could not be resolved. Check MAIL_HOST and DNS/network configuration.";
+        }
+
+        String message = exception.getMessage();
+        return message != null && !message.isBlank() ? message : exception.getClass().getSimpleName();
+    }
+
+    private boolean isConnectTimeout(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (current.getClass().getSimpleName().equals("MailConnectException")) {
+                return true;
+            }
+            if (message != null && message.toLowerCase().contains("connect timed out")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private <T extends Throwable> T findCause(Throwable throwable, Class<T> type) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (type.isInstance(current)) {
+                return type.cast(current);
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private Throwable findCauseByClassName(Throwable throwable, String simpleClassName) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current.getClass().getSimpleName().equals(simpleClassName)) {
+                return current;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     private void sendViaResend(String recipient, String subject, String body) throws IOException, InterruptedException {

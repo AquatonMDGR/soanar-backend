@@ -70,6 +70,8 @@ MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
 MAIL_USERNAME=email@gmail.com
 MAIL_PASSWORD=app-specific-password
+MAIL_PROVIDER=smtp
+MAIL_FROM=email@gmail.com
 ```
 
 ## Key Features
@@ -77,7 +79,7 @@ MAIL_PASSWORD=app-specific-password
 - Google OAuth 2.0 with @iacademy.edu.ph validation
 - JWT authentication on all protected endpoints
 - Role-based access control
-- SMTP email integration (Gmail)
+- SMTP email delivery (Gmail)
 - Distribution group email targeting
 - Database logging for emails
 - Auto schema management with Hibernate
