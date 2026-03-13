@@ -33,8 +33,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Base64;
 import java.io.IOException;
 
 @Service
@@ -73,6 +76,21 @@ public class EmailService {
 
     @Value("${sendgrid.api-key:${SENDGRID_API_KEY:}}")
     private String sendgridApiKey;
+
+    @Value("${gmail.api.client-id:${GMAIL_API_CLIENT_ID:}}")
+    private String gmailApiClientId;
+
+    @Value("${gmail.api.client-secret:${GMAIL_API_CLIENT_SECRET:}}")
+    private String gmailApiClientSecret;
+
+    @Value("${gmail.api.refresh-token:${GMAIL_API_REFRESH_TOKEN:}}")
+    private String gmailApiRefreshToken;
+
+    @Value("${gmail.api.token-url:${GMAIL_API_TOKEN_URL:https://oauth2.googleapis.com/token}}")
+    private String gmailApiTokenUrl;
+
+    @Value("${gmail.api.sender-user:${GMAIL_API_SENDER_USER:me}}")
+    private String gmailApiSenderUser;
 
     @Value("${mail.send-timeout-ms:${MAIL_SEND_TIMEOUT_MS:10000}}")
     private int mailSendTimeoutMs;
@@ -166,6 +184,11 @@ public class EmailService {
             return "SENDGRID";
         }
 
+        if ("gmail-api".equals(provider)) {
+            sendViaGmailApi(recipient, subject, body);
+            return "GMAIL_API";
+        }
+
         if ("auto".equals(provider)) {
             try {
                 sendViaSmtp(recipient, subject, body);
@@ -182,6 +205,95 @@ public class EmailService {
 
         sendViaSmtp(recipient, subject, body);
         return "SMTP";
+    }
+
+    private void sendViaGmailApi(String recipient, String subject, String body) throws IOException, InterruptedException {
+        if (mailFrom == null || mailFrom.isBlank()) {
+            throw new IllegalStateException("MAIL_FROM is required for Gmail API sender address");
+        }
+
+        String accessToken = fetchGmailAccessToken();
+        String fromName = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName : mailFrom;
+        String html = body != null ? body : "";
+        String encodedUser = URLEncoder.encode(
+                (gmailApiSenderUser != null && !gmailApiSenderUser.isBlank()) ? gmailApiSenderUser : "me",
+                StandardCharsets.UTF_8);
+
+        String mimeMessage = "From: " + formatFromHeader(fromName, mailFrom) + "\r\n"
+                + "To: " + recipient + "\r\n"
+                + "Subject: " + (subject != null ? subject : "") + "\r\n"
+                + "MIME-Version: 1.0\r\n"
+                + "Content-Type: text/html; charset=UTF-8\r\n"
+                + "\r\n"
+                + html;
+
+        String raw = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(mimeMessage.getBytes(StandardCharsets.UTF_8));
+        String payload = "{\"raw\":\"" + jsonEscape(raw) + "\"}";
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .build();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://gmail.googleapis.com/gmail/v1/users/" + encodedUser + "/messages/send"))
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Gmail API send failed (" + response.statusCode() + "): " + response.body());
+        }
+    }
+
+    private String fetchGmailAccessToken() throws IOException, InterruptedException {
+        if (gmailApiClientId == null || gmailApiClientId.isBlank()) {
+            throw new IllegalStateException("GMAIL_API_CLIENT_ID is not configured");
+        }
+        if (gmailApiClientSecret == null || gmailApiClientSecret.isBlank()) {
+            throw new IllegalStateException("GMAIL_API_CLIENT_SECRET is not configured");
+        }
+        if (gmailApiRefreshToken == null || gmailApiRefreshToken.isBlank()) {
+            throw new IllegalStateException("GMAIL_API_REFRESH_TOKEN is not configured");
+        }
+
+        String form = "client_id=" + URLEncoder.encode(gmailApiClientId, StandardCharsets.UTF_8)
+                + "&client_secret=" + URLEncoder.encode(gmailApiClientSecret, StandardCharsets.UTF_8)
+                + "&refresh_token=" + URLEncoder.encode(gmailApiRefreshToken, StandardCharsets.UTF_8)
+                + "&grant_type=refresh_token";
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .build();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(gmailApiTokenUrl))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .timeout(Duration.ofMillis(Math.max(mailSendTimeoutMs, 1000)))
+                .POST(HttpRequest.BodyPublishers.ofString(form))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Gmail token request failed (" + response.statusCode() + "): " + response.body());
+        }
+
+        Matcher matcher = Pattern.compile("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(response.body());
+        if (!matcher.find()) {
+            throw new IOException("Gmail token response did not include access_token: " + response.body());
+        }
+        return matcher.group(1);
+    }
+
+    private String formatFromHeader(String fromName, String fromEmail) {
+        if (fromName == null || fromName.isBlank()) {
+            return fromEmail;
+        }
+        String safeName = fromName.replace("\"", "'");
+        return "\"" + safeName + "\" <" + fromEmail + ">";
     }
 
     private void sendViaSmtp(String recipient, String subject, String body) throws Exception {

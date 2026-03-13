@@ -83,6 +83,14 @@ MAIL_SMTP_WRITE_TIMEOUT=30000
 # MAIL_PROVIDER=sendgrid
 # SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxx
 # MAIL_FROM=your-verified-sender@gmail.com
+
+# No custom domain available: use Gmail API (HTTPS/443) for gmail.com sender alignment
+# MAIL_PROVIDER=gmail-api
+# GMAIL_API_CLIENT_ID=your-google-oauth-client-id
+# GMAIL_API_CLIENT_SECRET=your-google-oauth-client-secret
+# GMAIL_API_REFRESH_TOKEN=your-google-oauth-refresh-token
+# GMAIL_API_SENDER_USER=me
+# MAIL_FROM=your-email@gmail.com
 ```
 
 ## Key Features
