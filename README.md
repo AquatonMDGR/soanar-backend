@@ -72,6 +72,17 @@ MAIL_USERNAME=email@gmail.com
 MAIL_PASSWORD=app-specific-password
 MAIL_PROVIDER=smtp
 MAIL_FROM=email@gmail.com
+MAIL_SMTP_STARTTLS_ENABLE=true
+MAIL_SMTP_SSL_ENABLE=false
+MAIL_SMTP_SSL_TRUST=smtp.gmail.com
+MAIL_SMTP_CONNECTION_TIMEOUT=30000
+MAIL_SMTP_TIMEOUT=30000
+MAIL_SMTP_WRITE_TIMEOUT=30000
+
+# Hosted deployments: if outbound SMTP is blocked, use SendGrid (HTTPS/443):
+# MAIL_PROVIDER=sendgrid
+# SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxx
+# MAIL_FROM=your-verified-sender@gmail.com
 ```
 
 ## Key Features
